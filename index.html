@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0c1b35">
+    <meta name="description" content="A student prototype that demonstrates how cyclone rain, coastal water, and river rise can overlap across coastal Odisha.">
+    <title>Odisha Flood Timeline | Prototype</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="Odisha Flood Timeline home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M4 19c4-7 8 7 12 0s8 7 12 0M4 12c4-7 8 7 12 0s8 7 12 0" /></svg>
+          </span>
+          <span><strong>ODISHA</strong><small>FLOOD TIMELINE</small></span>
+        </a>
+        <div class="topbar-right">
+          <span class="demo-badge"><i></i> DEMO SCENARIO</span>
+          <span class="topbar-divider" aria-hidden="true"></span>
+          <span class="edition">HackKalp 2K26 · AI/ML</span>
+        </div>
+      </header>
+
+      <main id="top">
+        <section class="intro">
+          <div>
+            <p class="eyebrow">COASTAL ODISHA · COMPOUND FLOOD VIEW</p>
+            <h1>See when flood drivers <span>overlap.</span></h1>
+            <p class="intro-copy">Explore a sample timeline that brings cyclone rain, coastal water, and river rise into one local view.</p>
+          </div>
+          <aside class="prototype-note">
+            <span class="note-icon" aria-hidden="true">i</span>
+            <p><strong>Prototype only</strong><br>All values and map positions are illustrative. This is not an official forecast or warning.</p>
+          </aside>
+        </section>
+
+        <section class="control-strip" aria-label="Scenario controls">
+          <label class="scenario-control" for="scenario-select">
+            <span class="control-label">SCENARIO</span>
+            <select id="scenario-select">
+              <option value="coastal">Cyclone + high tide</option>
+              <option value="rain-first">Heavy rain arrives first</option>
+              <option value="river-lag">River peak arrives later</option>
+            </select>
+          </label>
+          <div class="time-control">
+            <div class="time-heading">
+              <label class="control-label" for="time-slider">TIMELINE</label>
+              <output id="time-readout" for="time-slider">T+12 hours</output>
+            </div>
+            <input id="time-slider" type="range" min="0" max="24" step="1" value="12" aria-label="Hours into the sample scenario">
+            <div class="time-ticks" aria-hidden="true"><span>T+00</span><span>T+06</span><span>T+12</span><span>T+18</span><span>T+24</span></div>
+          </div>
+          <button class="peak-button" id="peak-button" type="button">
+            <span aria-hidden="true">⌁</span> Find peak overlap
+          </button>
+        </section>
+
+        <section class="summary-strip" aria-label="Current scenario summary">
+          <div class="summary-item">
+            <span class="summary-icon icon-water" aria-hidden="true">≈</span>
+            <div><span class="summary-label">SELECTED BLOCK</span><strong id="summary-block">Puri</strong></div>
+          </div>
+          <div class="summary-item">
+            <span class="summary-icon icon-risk" aria-hidden="true">◎</span>
+            <div><span class="summary-label">RELATIVE DEMO INDEX</span><strong id="summary-risk">-- / 100</strong></div>
+          </div>
+          <div class="summary-item">
+            <span class="summary-icon icon-window" aria-hidden="true">◷</span>
+            <div><span class="summary-label">PEAK OVERLAP WINDOW</span><strong id="summary-window">--</strong></div>
+          </div>
+          <div class="summary-item summary-updated">
+            <span class="summary-label">DATA STATUS</span>
+            <strong><span class="status-dot"></span> Sample values · no live feed</strong>
+          </div>
+        </section>
+
+        <div class="dashboard-grid">
+          <section class="panel map-panel" aria-labelledby="map-heading">
+            <div class="panel-heading">
+              <div><p class="eyebrow">SPATIAL OVERVIEW</p><h2 id="map-heading">Coastal Odisha</h2></div>
+              <span class="map-caption"><span class="legend-dot high"></span> Higher overlap</span>
+            </div>
+            <div class="map-frame">
+              <svg id="odisha-map" viewBox="0 0 860 410" role="img" aria-labelledby="map-title map-description">
+                <title id="map-title">Illustrative map of selected coastal Odisha blocks</title>
+                <desc id="map-description">A schematic coastline with sample markers for Ganjam, Puri, Jagatsinghpur, Kendrapara, and Bhadrak. Select a marker to inspect its sample risk index.</desc>
+                <defs>
+                  <linearGradient id="sea-fill" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#eaf6fa" />
+                    <stop offset="1" stop-color="#dceff4" />
+                  </linearGradient>
+                  <pattern id="map-grid" width="44" height="44" patternUnits="userSpaceOnUse">
+                    <path d="M 44 0 L 0 0 0 44" fill="none" stroke="#dce8e7" stroke-width="1" opacity=".55" />
+                  </pattern>
+                </defs>
+                <rect width="860" height="410" fill="url(#sea-fill)" />
+                <rect width="860" height="410" fill="url(#map-grid)" />
+                <text class="sea-label" x="55" y="330">BAY OF BENGAL</text>
+                <path class="land-shape" d="M226 0H860V410H499C480 387 467 362 462 336C455 306 465 282 458 255C451 229 438 208 446 184C454 160 447 137 434 113C420 87 424 62 401 40C382 22 359 10 341 0Z" />
+                <path class="district-line" d="M414 48C505 63 614 67 860 61M433 112C549 125 671 123 860 116M445 178C563 187 694 183 860 176M456 239C572 245 700 238 860 233M461 303C580 305 724 296 860 292" />
+                <path class="river-line river-mahanadi" d="M275 31C342 56 378 110 441 151C484 180 524 202 592 214" />
+                <path class="river-line" d="M326 90C376 103 409 119 452 146C486 167 530 179 590 185" />
+                <path class="river-line" d="M369 30C398 61 424 80 463 101C493 117 531 125 594 132" />
+                <text class="river-label" x="320" y="63">Mahanadi</text>
+                <text class="river-label" x="366" y="111">Brahmani</text>
+                <text class="river-label" x="420" y="81">Baitarani</text>
+                <text class="land-label" x="625" y="362">ODISHA</text>
+                <g id="map-markers"></g>
+                <text class="map-disclaimer" x="24" y="386">SCHEMATIC ONLY · NOT GEOREFERENCED</text>
+              </svg>
+              <div class="map-north" aria-hidden="true"><span>N</span><b>↑</b></div>
+            </div>
+            <div class="map-legend" aria-label="Map legend">
+              <span><i class="legend-dot low"></i> Lower</span>
+              <span><i class="legend-dot watch"></i> Watch</span>
+              <span><i class="legend-dot elevated"></i> Elevated</span>
+              <span><i class="legend-dot high"></i> High</span>
+            </div>
+          </section>
+
+          <aside class="panel block-panel" aria-labelledby="block-heading">
+            <div class="panel-heading block-heading">
+              <div><p class="eyebrow">AREA BREAKDOWN</p><h2 id="block-heading">Block watch</h2></div>
+              <span class="count-pill" id="block-count">05 AREAS</span>
+            </div>
+            <div id="block-list" class="block-list" role="list"></div>
+            <div class="risk-scale">
+              <span class="scale-line"></span>
+              <p>Relative demo index reflects <strong>sample hazard overlap</strong>, not a calibrated probability.</p>
+            </div>
+          </aside>
+        </div>
+
+        <section class="panel timeline-panel" aria-labelledby="timeline-heading">
+          <div class="panel-heading timeline-title-row">
+            <div><p class="eyebrow">HAZARD TIMING</p><h2 id="timeline-heading">What overlaps in <span id="timeline-block">Puri</span>?</h2></div>
+            <div class="timeline-legend">
+              <span><i class="hazard-swatch rain"></i>Heavy rain</span>
+              <span><i class="hazard-swatch surge"></i>Coastal water</span>
+              <span><i class="hazard-swatch tide"></i>High tide</span>
+              <span><i class="hazard-swatch river"></i>River rise</span>
+            </div>
+          </div>
+          <div id="hazard-timeline" class="hazard-timeline" role="img" aria-label="Sample hazard intensity timeline for selected block"></div>
+          <div class="timeline-foot">
+            <p><span class="foot-marker"></span>Current view: <strong id="timeline-hour">T+12</strong></p>
+            <p>Sample scenario · 0–24 hours</p>
+          </div>
+        </section>
+
+        <section class="lower-grid">
+          <section class="panel signal-panel" aria-labelledby="signal-heading">
+            <div class="panel-heading signal-title-row">
+              <div><p class="eyebrow">SELECTED AREA</p><h2 id="signal-heading"><span id="detail-block">Puri</span> signal mix</h2></div>
+              <span class="risk-pill" id="risk-pill">--</span>
+            </div>
+            <p class="signal-copy" id="signal-copy">Select a block or move the timeline to inspect its sample hazard signals.</p>
+            <div id="signal-list" class="signal-list"></div>
+          </section>
+          <aside class="panel method-panel">
+            <p class="eyebrow">HOW THIS DEMO WORKS</p>
+            <h2>Transparent sample scoring</h2>
+            <p>The demo compares four illustrative hazard curves and raises the index when several drivers are strong at the same time.</p>
+            <div class="method-equation" aria-label="Rain plus coastal water plus tide plus river equals overlap index">
+              <span>RAIN</span><b>+</b><span>COAST</span><b>+</b><span>TIDE</span><b>+</b><span>RIVER</span><b>=</b><strong>OVERLAP</strong>
+            </div>
+            <p class="method-note">No machine-learning model or live weather data is connected yet. The score is for demonstrating the interface only.</p>
+          </aside>
+        </section>
+
+        <footer class="page-footer">
+          <span>ODISHA FLOOD TIMELINE <i>·</i> STUDENT PROTOTYPE</span>
+          <button id="download-button" class="download-button" type="button">Download scenario summary <span aria-hidden="true">↓</span></button>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
