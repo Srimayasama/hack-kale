@@ -35,6 +35,7 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const el = {
+  fileNotice: $('#file-protocol-notice'), map: $('#odisha-map'),
   status: $('#data-status'), refresh: $('#refresh-button'), locationSelect: $('#location-select'),
   forecastTime: $('#forecast-time'), forecastIssue: $('#forecast-issue'), lastUpdated: $('#last-updated'),
   rain: $('#metric-rain'), gust: $('#metric-gust'), pressure: $('#metric-pressure'), probability: $('#metric-probability'),
@@ -286,7 +287,16 @@ function renderMapMarkers() {
 }
 
 function initializeMap() {
-  if (state.map || !window.L) return;
+  if (location.protocol === 'file:') {
+    el.map.innerHTML = '<div class="map-file-message"><span class="map-file-icon">↗</span><strong>Open the HTTP version to load this map</strong><p>OpenStreetMap tiles require a normal webpage address. Use <a href="http://127.0.0.1:8000">the local server preview</a>; instructions are shown above.</p></div>';
+    el.trackToggle.disabled = true;
+    return;
+  }
+  if (state.map) return;
+  if (!window.L) {
+    el.map.innerHTML = '<div class="map-file-message"><strong>The interactive map library did not load.</strong><p>Check your internet connection and refresh the page.</p></div>';
+    return;
+  }
   state.map = L.map('odisha-map', { zoomControl: true, scrollWheelZoom: false, preferCanvas: true }).setView([20.3, 86.4], 6.8);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
@@ -417,7 +427,9 @@ async function loadStormArchive() {
   } catch (error) {
     el.stormSelect.innerHTML='<option>Archive unavailable</option>';
     el.stormFacts.innerHTML='<div class="storm-fact"><span>STORM ARCHIVE</span><strong>Unavailable</strong></div>';
-    el.stormNote.textContent=`Historical track data did not load: ${error.message}`;
+    el.stormNote.textContent=location.protocol==='file:'
+      ? 'Open the HTTP version of this project to load the local NOAA historical track archive.'
+      : `Historical track data did not load: ${error.message}`;
   }
 }
 
@@ -446,5 +458,6 @@ function connectControls() {
 
 populateLocations();
 connectControls();
+if (location.protocol === 'file:') el.fileNotice.hidden = false;
 loadStormArchive();
 refreshData().then(()=>initializeMap());

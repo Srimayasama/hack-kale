@@ -10,7 +10,7 @@ Open this folder in a terminal and start any simple static web server. For examp
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`. A web server is needed so the browser can load the local cyclone archive JSON. Internet access is needed for forecast data, the map tiles, and Leaflet.
+Then open `http://localhost:8000`. Do not open `index.html` directly with `file://`: the browser cannot fetch the local cyclone archive that way, and OpenStreetMap's tile service requires a valid HTTP referrer. Internet access is needed for forecast data, map tiles, and Leaflet. See the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 
 ## Dashboard features
 
