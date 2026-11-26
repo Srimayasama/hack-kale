@@ -25,7 +25,7 @@ Then open `http://127.0.0.1:8000`. Do not open `index.html` directly with `file:
 - **Nearshore context:** a marine forecast near Puri showing significant wave height and modelled sea-level height.
 - **Historical cyclone replay:** 65 named tracks from NOAA NCEI IBTrACS v04r01 North Indian Ocean data. The included subset covers named storms since 1980 that passed through the Bay of Bengal focus box. Selecting a storm draws its archived track on the map.
 - **Live AI cyclone guidance:** the server downloads ECMWF AIFS ensemble tropical-cyclone tracks from the latest available model run, decodes forecast centre, central pressure and maximum 10 m wind, then displays member paths in the Bay and Odisha watch boxes.
-- **Four-stage track outlook:** review the selected model system at +24, +48, +72 and +96 hours, with median centre coordinates, pressure, an indicative wind band and the number of member tracks passing within 150 km of five Odisha coastal reference points. The map marks the four centres and the selected system's ensemble paths.
+- **Four-stage track outlook:** review the selected model system at +24, +48, +72 and +96 hours, with median centre coordinates, pressure, an indicative wind band and the number of member tracks passing within 150 km of five Odisha coastal reference points. The map marks the four centres and the selected system's ensemble paths. Generate a shareable vector outlook graphic and download it as a high-resolution PNG.
 - **AI/ML project workflow:** the page outlines how INSAT imagery could feed cyclone detection, morphology classification and short-range track/intensity guidance. It clearly labels satellite ingestion and trained inference as not yet implemented.
 
 ## Data sources and limitations

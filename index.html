@@ -65,8 +65,12 @@
                 <h3 id="aifs-stage-title">Where could this system go?</h3>
                 <p class="section-copy">Four forecast steps show the ensemble centre, modelled wind band, central pressure, and Odisha coastal reference points close to the projected track.</p>
               </div>
-              <label class="aifs-scenario-select" for="aifs-scenario-select"><span class="control-label">MODEL SCENARIO</span><select id="aifs-scenario-select"></select></label>
+              <div class="aifs-stage-actions">
+                <label class="aifs-scenario-select" for="aifs-scenario-select"><span class="control-label">MODEL SCENARIO</span><select id="aifs-scenario-select"></select></label>
+                <button id="aifs-download-image" class="text-button" type="button">Download forecast image <span aria-hidden="true">↓</span></button>
+              </div>
             </div>
+            <div id="aifs-stage-visual" class="aifs-stage-visual" role="img" aria-label="Generated four-stage cyclone path and coastal proximity graphic"></div>
             <div id="aifs-stage-grid" class="aifs-stage-grid" aria-live="polite"></div>
             <p class="aifs-stage-caveat">Track proximity is a screening view: a listed location is within 150 km of at least one ensemble track at that lead. It is not an affected-area boundary, landfall forecast, or probability. Wind bands are indicative comparisons against IMD thresholds using ECMWF model maximum 10 m wind, not official IMD cyclone classifications. A model system ID is not a cyclone name, and the same ID is not guaranteed to be the same physical storm across ensemble members. Follow IMD and OSDMA warnings.</p>
           </section>

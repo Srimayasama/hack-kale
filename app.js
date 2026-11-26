@@ -44,6 +44,7 @@ const el = {
   aifsStatus: $('#aifs-status'), aifsContent: $('#aifs-guidance-content'), aifsRunLabel: $('#aifs-run-label'),
   aifsRefresh: $('#aifs-refresh-button'), aifsTrackToggle: $('#aifs-track-toggle'),
   aifsStageOutlook: $('#aifs-stage-outlook'), aifsScenario: $('#aifs-scenario-select'), aifsStageGrid: $('#aifs-stage-grid'),
+  aifsStageVisual: $('#aifs-stage-visual'), aifsDownloadImage: $('#aifs-download-image'),
   forecastTime: $('#forecast-time'), forecastIssue: $('#forecast-issue'), lastUpdated: $('#last-updated'),
   rain: $('#metric-rain'), gust: $('#metric-gust'), pressure: $('#metric-pressure'), probability: $('#metric-probability'),
   mapMetric: $('#map-metric'), mapLegend: $('#map-legend'), locationList: $('#location-list'),
@@ -337,6 +338,99 @@ function formatCoordinate(value, positive, negative) {
   return `${Math.abs(numeric).toFixed(2)}°${numeric < 0 ? negative : positive}`;
 }
 
+function renderAifsStageGraphic(storm) {
+  const width = 1440, height = 720;
+  const map = { x: 80, y: 132, width: 730, height: 500, west: 78, east: 100, south: 4, north: 26 };
+  const project = (lon, lat) => [
+    map.x + ((lon - map.west) / (map.east - map.west)) * map.width,
+    map.y + ((map.north - lat) / (map.north - map.south)) * map.height,
+  ];
+  const runLabel = state.aifsGuidance?.modelRun
+    ? formatTime(state.aifsGuidance.modelRun, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'Latest available run';
+  const stages = storm.forecastStages || [];
+  const coast = [[84.5,17.4],[84.7,18.2],[85.0,18.8],[85.3,19.3],[85.8,19.8],[86.2,20.3],[86.6,20.8],[87.0,21.2],[87.5,21.8],[88.0,22.4],[88.5,23.1],[89.0,23.9],[89.4,24.8],[89.7,25.6]];
+  const coastLine = coast.map(([lon,lat], index) => `${index ? 'L' : 'M'}${project(lon,lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ');
+  const landPath = `${coastLine} L${project(100,25.6).join(',')} L${project(100,17.4).join(',')} Z`;
+  const gridLons = [78,82,86,90,94,98];
+  const gridLats = [4,8,12,16,20,24];
+  const gridMarkup = [
+    ...gridLons.map((lon) => {
+      const [x] = project(lon, map.south);
+      return `<line x1="${x}" y1="${map.y}" x2="${x}" y2="${map.y + map.height}" stroke="#d5e5e7" stroke-width="1"/><text x="${x}" y="${map.y + map.height + 23}" text-anchor="middle" class="axis">${lon}°E</text>`;
+    }),
+    ...gridLats.map((lat) => {
+      const [,y] = project(map.west, lat);
+      return `<line x1="${map.x}" y1="${y}" x2="${map.x + map.width}" y2="${y}" stroke="#d5e5e7" stroke-width="1"/><text x="${map.x - 12}" y="${y + 4}" text-anchor="end" class="axis">${lat}°N</text>`;
+    }),
+  ].join('');
+  const memberMarkup = (storm.bayTracks || []).map((track) => {
+    const points = (track.points || []).filter((point) => point.lon >= map.west && point.lon <= map.east && point.lat >= map.south && point.lat <= map.north);
+    if (points.length < 2) return '';
+    const line = points.map((point,index) => `${index ? 'L' : 'M'}${project(point.lon,point.lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ');
+    return `<path d="${line}" fill="none" stroke="#4e92a0" stroke-width="1.7" opacity=".17"/>`;
+  }).join('');
+  const medianPoints = (storm.medianPath || []).filter((point) => point.lon >= map.west && point.lon <= map.east && point.lat >= map.south && point.lat <= map.north);
+  const medianMarkup = medianPoints.length > 1
+    ? `<path d="${medianPoints.map((point,index)=>`${index?'L':'M'}${project(point.lon,point.lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ')}" fill="none" stroke="#0b8e88" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`
+    : '';
+  const stageMarkup = stages.map((stage,index) => {
+    if (stage.lat === undefined || stage.lon === undefined) return '';
+    const [x,y] = project(stage.lon,stage.lat);
+    return `<g><circle cx="${x}" cy="${y}" r="15" fill="#0b8e88" stroke="#fff" stroke-width="4"/><text x="${x}" y="${y + 5}" text-anchor="middle" class="stage-index">${index + 1}</text></g>`;
+  }).join('');
+  const points = locations.map((place) => {
+    const active = stages.some((stage) => (stage.nearbyPlaces || []).some((item) => item.district === place.district && item.memberTracksNear > 0));
+    const [x,y] = project(place.lon,place.lat);
+    const color = active ? '#d59b38' : '#fff';
+    const stroke = active ? '#fff' : '#0b8e88';
+    return `<circle cx="${x}" cy="${y}" r="7" fill="${color}" stroke="${stroke}" stroke-width="3"><title>${escapeHTML(place.district)}${active ? ' · near at least one forecast stage' : ' · coastal reference point'}</title></circle>`;
+  }).join('');
+  const stageRows = stages.map((stage,index) => {
+    const y = 164 + index * 113;
+    const center = stage.lat === undefined ? 'No centre available at this lead' : `${formatCoordinate(stage.lat,'N','S')} · ${formatCoordinate(stage.lon,'E','W')}`;
+    const nearby = (stage.nearbyPlaces || []).filter((place) => place.memberTracksNear > 0).slice(0, 2);
+    const nearText = nearby.length
+      ? `Near-track: ${nearby.map((place)=>`${escapeHTML(place.district)} ${number(place.memberTracksNear,0)}/${number(place.memberTracksTotal,0)}`).join(' · ')}`
+      : 'No listed coastal point in the 150 km screen';
+    return `<g>
+      <rect x="866" y="${y}" width="524" height="104" rx="12" fill="#fff" stroke="#dce8e9"/>
+      <circle cx="893" cy="${y + 25}" r="15" fill="#e4f4f2"/><text x="893" y="${y + 30}" text-anchor="middle" class="row-index">${index + 1}</text>
+      <text x="920" y="${y + 24}" class="row-title">${escapeHTML(formatLead(stage.leadHours))} <tspan class="row-date">· ${escapeHTML(formatTime(stage.validAt,{weekday:'short',day:'numeric',month:'short'}))}</tspan></text>
+      <text x="920" y="${y + 46}" class="row-center">${escapeHTML(center)}</text>
+      <text x="920" y="${y + 65}" class="row-class">${escapeHTML(stage.windBand || 'Intensity unavailable')}</text>
+      <text x="920" y="${y + 82}" class="row-meta">${number(stage.windKmh,0)} km/h · ${number(stage.pressureHpa,0)} hPa · ${number(stage.members,0)}/${number(stage.availableMemberTracks,0)} Bay paths</text>
+      <text x="920" y="${y + 97}" class="row-near">${nearText}</text>
+    </g>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Four-stage ECMWF AIFS cyclone track outlook for Odisha">
+    <style>
+      text{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.title{font-size:27px;font-weight:850;fill:#182a41;letter-spacing:-.7px}.subtitle{font-size:12px;font-weight:650;fill:#718291}.eyebrow{font-size:10px;font-weight:850;letter-spacing:1.7px;fill:#0b8e88}.axis{font-size:10px;font-weight:750;fill:#647885}.maplabel{font-size:12px;font-weight:850;letter-spacing:1.2px;fill:#6d9095;opacity:.86}.paneltitle{font-size:13px;font-weight:850;letter-spacing:1.1px;fill:#182a41}.row-index{font-size:12px;font-weight:900;fill:#0b8e88}.row-title{font-size:14px;font-weight:850;fill:#182a41}.row-date{font-size:10px;font-weight:650;fill:#8895a0}.row-center{font-size:12px;font-weight:800;fill:#30495d}.row-class{font-size:10px;font-weight:850;fill:#237c75}.row-meta{font-size:10px;font-weight:700;fill:#687c89}.row-near{font-size:9px;font-weight:750;fill:#9a6f26}.legend{font-size:10px;font-weight:700;fill:#526b77}.foot{font-size:9px;font-weight:650;fill:#82919a}.stage-index{font-size:12px;font-weight:900;fill:#fff}
+    </style>
+    <rect width="100%" height="100%" rx="18" fill="#f7fafb"/>
+    <text x="48" y="43" class="eyebrow">ATMOSCALE AI · ODISHA CYCLONE LAB</text>
+    <text x="48" y="78" class="title">Four-stage cyclone track outlook</text>
+    <text x="48" y="101" class="subtitle">ECMWF AIFS ensemble · model system ${escapeHTML(storm.stormId)} · run ${escapeHTML(runLabel)} IST</text>
+    <rect x="50" y="115" width="790" height="550" rx="14" fill="#e9f5f6" stroke="#d5e5e7"/>
+    <rect x="${map.x}" y="${map.y}" width="${map.width}" height="${map.height}" rx="4" fill="#dceff2"/>
+    ${gridMarkup}
+    <path d="${landPath}" fill="#e4efdf" stroke="none"/>
+    <path d="${coastLine}" fill="none" stroke="#91a998" stroke-width="2.5"/>
+    <text x="${project(92,23.3)[0]}" y="${project(92,23.3)[1]}" class="maplabel">INDIA · SCHEMATIC COAST</text>
+    <text x="${project(91.4,14)[0]}" y="${project(91.4,14)[1]}" class="maplabel">BAY OF BENGAL</text>
+    ${memberMarkup}${medianMarkup}${points}${stageMarkup}
+    <circle cx="98" cy="649" r="5" fill="#0b8e88"/><text x="111" y="653" class="legend">Coastal reference point</text>
+    <circle cx="250" cy="649" r="5" fill="#d59b38"/><text x="263" y="653" class="legend">Near a member track at a forecast stage</text>
+    <line x1="500" y1="649" x2="526" y2="649" stroke="#0b8e88" stroke-width="3"/><text x="534" y="653" class="legend">Ensemble median path</text>
+    <rect x="850" y="115" width="550" height="550" rx="14" fill="#eef4f5" stroke="#dfe8e9"/>
+    <text x="874" y="145" class="paneltitle">FORECAST CENTRE · INTENSITY · COASTAL PROXIMITY</text>
+    ${stageRows}
+    <text x="50" y="696" class="foot">Nearby means a forecast member centre falls within 150 km of a reference point. This is not an impact boundary or an official warning.</text>
+    <text x="1390" y="696" text-anchor="end" class="foot">Wind band is indicative, not an IMD classification.</text>
+  </svg>`;
+  el.aifsStageVisual.innerHTML = svg;
+}
+
 function renderAifsStages() {
   const storms = state.aifsGuidance?.storms || [];
   const storm = storms.find((item) => item.stormId === state.selectedAifsStormId) || storms[0];
@@ -348,6 +442,7 @@ function renderAifsStages() {
   el.aifsStageOutlook.hidden = false;
   el.aifsScenario.value = storm.stormId;
   const stages = storm.forecastStages || [];
+  renderAifsStageGraphic(storm);
   el.aifsStageGrid.innerHTML = stages.map((stage, index) => {
     const stageNumber = String(index + 1).padStart(2, '0');
     if (!Number.isFinite(Number(stage.lat)) || !Number.isFinite(Number(stage.lon))) {
@@ -371,6 +466,50 @@ function renderAifsStages() {
       <div class="aifs-stage-nearby"><span>COASTAL POINTS NEAR THE TRACK <small>${number(stage.members, 0)}/${number(stage.availableMemberTracks, 0)} Bay paths at this lead</small></span>${nearbyMarkup}</div>
     </article>`;
   }).join('') || '<div class="aifs-empty-state"><strong>Four-stage outlook unavailable for this model system.</strong><p>Try another model scenario or refresh the guidance.</p></div>';
+}
+
+async function downloadAifsForecastImage() {
+  const svg = el.aifsStageVisual.querySelector('svg');
+  if (!svg) return;
+  const button = el.aifsDownloadImage;
+  const originalLabel = button.innerHTML;
+  button.disabled = true;
+  button.textContent = 'Preparing PNG…';
+  let sourceUrl = '';
+  try {
+    const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
+    sourceUrl = URL.createObjectURL(svgBlob);
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('Could not render the forecast graphic.'));
+      image.src = sourceUrl;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = 2880;
+    canvas.height = 1440;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas export is unavailable in this browser.');
+    context.fillStyle = '#f7fafb';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const png = await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('PNG export failed.')), 'image/png'));
+    const safeId = String(state.selectedAifsStormId || 'cyclone').replace(/[^a-z0-9-]/gi, '-');
+    const link = document.createElement('a');
+    const pngUrl = URL.createObjectURL(png);
+    link.href = pngUrl;
+    link.download = `atmosscale-${safeId}-4-stage-outlook.png`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+  } catch (error) {
+    window.alert(`Could not create the PNG image: ${error.message}`);
+  } finally {
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    button.disabled = false;
+    button.innerHTML = originalLabel;
+  }
 }
 
 function renderAifsGuidance(payload) {
@@ -644,6 +783,7 @@ function connectControls() {
     renderStormDetails();
   });
   el.aifsRefresh.addEventListener('click',()=>loadAifsGuidance(true));
+  el.aifsDownloadImage.addEventListener('click',downloadAifsForecastImage);
   el.aifsTrackToggle.addEventListener('change',()=>{state.aifsMapTouched=true;drawAifsTracks();});
   el.aifsScenario.addEventListener('change',(event)=>{
     state.selectedAifsStormId=event.target.value;
