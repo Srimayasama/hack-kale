@@ -23,6 +23,15 @@ CACHE_SECONDS = 30 * 60
 BAY_BOX = {"south": 4.0, "north": 25.0, "west": 78.0, "east": 100.0}
 NORTH_BAY_BOX = {"south": 10.0, "north": 24.0, "west": 78.0, "east": 92.0}
 ODISHA_WATCH_BOX = {"south": 14.0, "north": 23.0, "west": 80.0, "east": 90.0}
+OUTLOOK_LEADS = (24, 48, 72, 96)
+TRACK_NEAR_RADIUS_KM = 150.0
+COASTAL_REFERENCE_POINTS = (
+    {"name": "Ganjam · Gopalpur", "district": "Ganjam", "lat": 19.36, "lon": 84.98},
+    {"name": "Puri", "district": "Puri", "lat": 19.813, "lon": 85.831},
+    {"name": "Jagatsinghpur · Paradip", "district": "Jagatsinghpur", "lat": 20.267, "lon": 86.17},
+    {"name": "Kendrapara coast", "district": "Kendrapara", "lat": 20.51, "lon": 86.42},
+    {"name": "Bhadrak · Dhamra", "district": "Bhadrak", "lat": 21.055, "lon": 86.496},
+)
 cache_lock = threading.Lock()
 cached_guidance: dict | None = None
 cached_at = 0.0
@@ -53,6 +62,63 @@ def _rank_value(ranked: dict, rank: int, field: str, member_index: int):
         return None
     value = values[member_index] if len(values) > 1 else values[0]
     return _plain(value)
+
+
+def _wind_band(speed_kmh: float | None) -> str | None:
+    """Give an indicative band using IMD wind thresholds as a reference."""
+    if speed_kmh is None:
+        return None
+    if speed_kmh < 31:
+        return "Low pressure area range"
+    if speed_kmh < 50:
+        return "Depression range"
+    if speed_kmh < 62:
+        return "Deep depression range"
+    if speed_kmh < 89:
+        return "Cyclonic storm range"
+    if speed_kmh < 118:
+        return "Severe cyclonic storm range"
+    if speed_kmh < 168:
+        return "Very severe cyclonic storm range"
+    if speed_kmh < 222:
+        return "Extremely severe cyclonic storm range"
+    return "Super cyclonic storm range"
+
+
+def _point_from_ranked(ranked: dict, member_index: int, lead: int, position_rank: int, scalar_rank: int, run_time: datetime) -> dict | None:
+    lat = _rank_value(ranked, position_rank, "latitude", member_index)
+    lon = _rank_value(ranked, position_rank, "longitude", member_index)
+    if lat is None or lon is None:
+        return None
+    lat = float(lat)
+    lon = float(lon)
+    if not (-90 <= lat <= 90):
+        return None
+    if lon > 180:
+        lon -= 360
+    if not (-180 <= lon <= 180) or (abs(lat) < 0.01 and abs(lon) < 0.01):
+        return None
+    pressure_pa = _rank_value(ranked, scalar_rank, "pressureReducedToMeanSeaLevel", member_index)
+    wind_ms = _rank_value(ranked, scalar_rank, "windSpeedAt10M", member_index)
+    wind_kmh = None if wind_ms is None else float(wind_ms) * 3.6
+    pressure_hpa = None if pressure_pa is None else float(pressure_pa) / 100
+    return {
+        "leadHours": int(lead),
+        "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
+        "lat": round(lat, 3),
+        "lon": round(lon, 3),
+        "windKmh": None if wind_kmh is None else round(wind_kmh, 1),
+        "pressureHpa": None if pressure_hpa is None else round(pressure_hpa, 1),
+    }
+
+
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    value = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 6371.0 * 2 * asin(sqrt(min(1.0, value)))
 
 
 def _inside(point: dict, box: dict) -> bool:
@@ -95,41 +161,32 @@ def _read_tracks(path: str) -> tuple[datetime | None, dict[str, list[dict]]]:
                     for key in ranked
                     if key.endswith("#timePeriod")
                 )
-                rank_data = []
-                for rank in lead_ranks:
-                    rank_data.append((
-                        _flat_values(ranked.get(f"#{rank}#timePeriod")),
-                        _flat_values(ranked.get(f"#{rank}#latitude")),
-                        _flat_values(ranked.get(f"#{rank}#longitude")),
-                    ))
-
                 for member_index in range(member_count):
                     storm_id = storm_ids[member_index] if member_index < len(storm_ids) else (storm_ids[0] if storm_ids else "Unknown")
                     if not storm_id:
                         continue
                     points = []
-                    for times, latitudes, longitudes in rank_data:
+                    # ECMWF's TC BUFR stores perturbed analysis centres at rank 2,
+                    # then each forecast centre at ranks 4, 6, 8…; pressure and
+                    # maximum 10 m wind are stored at ranks 1, 2, 3… respectively.
+                    analysis = _point_from_ranked(ranked, member_index, 0, 2, 1, run_time)
+                    if analysis:
+                        points.append(analysis)
+                    for period_rank in lead_ranks:
+                        times = _flat_values(ranked.get(f"#{period_rank}#timePeriod"))
                         lead = _plain(times[member_index]) if member_index < len(times) else None
-                        lat = _plain(latitudes[member_index]) if member_index < len(latitudes) else None
-                        lon = _plain(longitudes[member_index]) if member_index < len(longitudes) else None
-                        if lead is None or lat is None or lon is None:
+                        if lead is None:
                             continue
-                        lat = float(lat)
-                        lon = float(lon)
-                        if not (-90 <= lat <= 90):
-                            continue
-                        if lon > 180:
-                            lon -= 360
-                        if not (-180 <= lon <= 180) or (abs(lat) < 0.01 and abs(lon) < 0.01):
-                            continue
-                        lead = int(lead)
-                        point = {
-                            "leadHours": lead,
-                            "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
-                            "lat": round(lat, 3),
-                            "lon": round(lon, 3),
-                        }
-                        points.append(point)
+                        point = _point_from_ranked(
+                            ranked,
+                            member_index,
+                            int(lead),
+                            period_rank * 2 + 2,
+                            period_rank + 1,
+                            run_time,
+                        )
+                        if point:
+                            points.append(point)
 
                     points.sort(key=lambda item: item["leadHours"])
                     member_id = member_ids[member_index] if member_index < len(member_ids) else member_index + 1
@@ -139,6 +196,51 @@ def _read_tracks(path: str) -> tuple[datetime | None, dict[str, list[dict]]]:
 
 def _region_path(points: list[dict], box: dict) -> list[dict]:
     return [point for point in points if _inside(point, box)]
+
+
+def _forecast_stages(member_tracks: list[dict], run_time: datetime) -> list[dict]:
+    stages = []
+    for target_lead in OUTLOOK_LEADS:
+        stage_points = [
+            point
+            for track in member_tracks
+            for point in track["points"]
+            if point["leadHours"] == target_lead
+        ]
+        if not stage_points:
+            stages.append({"leadHours": target_lead, "validAt": (run_time + timedelta(hours=target_lead)).isoformat().replace("+00:00", "Z"), "members": 0})
+            continue
+
+        lat = float(np.median([point["lat"] for point in stage_points]))
+        lon = float(np.median([point["lon"] for point in stage_points]))
+        winds = [point["windKmh"] for point in stage_points if point.get("windKmh") is not None]
+        pressures = [point["pressureHpa"] for point in stage_points if point.get("pressureHpa") is not None]
+
+        nearby_places = []
+        for place in COASTAL_REFERENCE_POINTS:
+            distances = [_distance_km(point["lat"], point["lon"], place["lat"], place["lon"]) for point in stage_points]
+            nearby_places.append({
+                "district": place["district"],
+                "name": place["name"],
+                "memberTracksNear": sum(distance <= TRACK_NEAR_RADIUS_KM for distance in distances),
+                "memberTracksTotal": len(distances),
+                "medianDistanceKm": round(float(np.median(distances)), 1),
+            })
+        nearby_places.sort(key=lambda place: (-place["memberTracksNear"], place["medianDistanceKm"]))
+        wind_kmh = round(float(np.median(winds)), 1) if winds else None
+        stages.append({
+            "leadHours": target_lead,
+            "validAt": (run_time + timedelta(hours=target_lead)).isoformat().replace("+00:00", "Z"),
+            "lat": round(lat, 3),
+            "lon": round(lon, 3),
+            "windKmh": wind_kmh,
+            "pressureHpa": round(float(np.median(pressures)), 1) if pressures else None,
+            "windBand": _wind_band(wind_kmh),
+            "members": len(stage_points),
+            "availableMemberTracks": len(member_tracks),
+            "nearbyPlaces": nearby_places,
+        })
+    return stages
 
 
 def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_ids: set[str]) -> list[dict]:
@@ -160,7 +262,7 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
                 bay_tracks.append({"member": track["member"], "points": bay_points})
                 bay_leads.extend(point["leadHours"] for point in bay_points)
                 for point in bay_points:
-                    lead_positions.setdefault(point["leadHours"], []).append((point["lat"], point["lon"]))
+                    lead_positions.setdefault(point["leadHours"], []).append(point)
             if len(north_bay_points) >= 2:
                 north_bay_tracks.append({"member": track["member"], "points": north_bay_points})
                 north_bay_leads.extend(point["leadHours"] for point in north_bay_points)
@@ -175,11 +277,15 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
         for lead, positions in sorted(lead_positions.items()):
             if len(positions) < 2:
                 continue
+            winds = [point["windKmh"] for point in positions if point.get("windKmh") is not None]
+            pressures = [point["pressureHpa"] for point in positions if point.get("pressureHpa") is not None]
             median_path.append({
                 "leadHours": lead,
                 "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
-                "lat": round(float(np.median([position[0] for position in positions])), 3),
-                "lon": round(float(np.median([position[1] for position in positions])), 3),
+                "lat": round(float(np.median([point["lat"] for point in positions])), 3),
+                "lon": round(float(np.median([point["lon"] for point in positions])), 3),
+                "windKmh": round(float(np.median(winds)), 1) if winds else None,
+                "pressureHpa": round(float(np.median(pressures)), 1) if pressures else None,
                 "members": len(positions),
             })
 
@@ -199,6 +305,7 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
             "bayTracks": bay_tracks,
             "odishaTracks": odisha_tracks,
             "medianPath": median_path,
+            "forecastStages": _forecast_stages(bay_tracks, run_time),
         })
     return sorted(summaries, key=lambda item: (-item["bayPathCount"], item["stormId"]))
 
@@ -252,6 +359,7 @@ def fetch_live_guidance() -> dict:
         "bayBox": BAY_BOX,
         "northBayBox": NORTH_BAY_BOX,
         "odishaBox": ODISHA_WATCH_BOX,
+        "trackNearRadiusKm": TRACK_NEAR_RADIUS_KM,
         "storms": _summarize_tracks(ensemble_groups, run_time, single_ids),
         "singleModelAvailable": single_error is None,
         "singleModelError": single_error,

@@ -58,6 +58,18 @@
           <div id="aifs-guidance-content" class="aifs-guidance-content" role="status" aria-live="polite">
             <div class="aifs-loading-row"><span class="loading-spinner" aria-hidden="true"></span><span>Fetching the latest ECMWF AI ensemble track guidance…</span></div>
           </div>
+          <section id="aifs-stage-outlook" class="aifs-stage-outlook" hidden aria-labelledby="aifs-stage-title">
+            <div class="aifs-stage-heading">
+              <div>
+                <p class="eyebrow">FOUR-STEP TRACK OUTLOOK</p>
+                <h3 id="aifs-stage-title">Where could this system go?</h3>
+                <p class="section-copy">Four forecast steps show the ensemble centre, modelled wind band, central pressure, and Odisha coastal reference points close to the projected track.</p>
+              </div>
+              <label class="aifs-scenario-select" for="aifs-scenario-select"><span class="control-label">MODEL SCENARIO</span><select id="aifs-scenario-select"></select></label>
+            </div>
+            <div id="aifs-stage-grid" class="aifs-stage-grid" aria-live="polite"></div>
+            <p class="aifs-stage-caveat">Track proximity is a screening view: a listed location is within 150 km of at least one ensemble track at that lead. It is not an affected-area boundary, landfall forecast, or probability. Wind bands are indicative comparisons against IMD thresholds using ECMWF model maximum 10 m wind, not official IMD cyclone classifications. A model system ID is not a cyclone name, and the same ID is not guaranteed to be the same physical storm across ensemble members. Follow IMD and OSDMA warnings.</p>
+          </section>
           <div class="aifs-footer">
             <span id="aifs-run-label">Model run: waiting for ECMWF</span>
             <div>
@@ -81,7 +93,7 @@
               <div><p class="eyebrow">LIVE POINT FORECASTS + HISTORICAL TRACKS</p><h2>Odisha coast, in context</h2></div>
               <div class="map-layer-controls">
                 <label class="map-layer-control"><input id="track-toggle" type="checkbox"><span class="switch"></span><span>Historical track</span></label>
-                <label class="map-layer-control"><input id="aifs-track-toggle" type="checkbox" disabled><span class="switch"></span><span>Live AIFS ensemble</span></label>
+                <label class="map-layer-control"><input id="aifs-track-toggle" type="checkbox" disabled><span class="switch"></span><span>Live AIFS path + stages</span></label>
               </div>
             </div>
             <div class="map-toolbar">
@@ -137,7 +149,7 @@
             <div>
               <p class="eyebrow">SATELLITE AI/ML · PROJECT WORKFLOW</p>
               <h2>From cloud pattern to cyclone outlook</h2>
-              <p class="section-copy">The dashboard now displays live ECMWF AI ensemble tracks. Its Odisha-specific satellite image detection and pattern classifier still need to be built and trained.</p>
+              <p class="section-copy">The dashboard now displays staged ECMWF AI track, centre, pressure and wind guidance. Its Odisha-specific satellite image detection and cloud-pattern classifier still need to be built and trained.</p>
             </div>
             <span class="model-status"><i></i> SATELLITE MODEL · NEXT STAGE</span>
           </div>
@@ -164,7 +176,7 @@
             <article class="ai-stage">
               <span class="ai-stage-number">04</span>
               <div><span class="ai-stage-label">PREDICT</span><h3>Estimate the next change</h3></div>
-              <p>Live baseline: ECMWF AIFS ensemble track guidance. The next model step is combining local satellite patterns with environmental data for Odisha.</p>
+              <p>Live baseline: ECMWF AIFS ensemble track guidance, with indicative wind bands and coastal track proximity. The next model step is combining local satellite patterns with environmental data for Odisha.</p>
               <small>Current AIFS horizon: up to 15 days</small>
             </article>
           </div>

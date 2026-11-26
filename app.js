@@ -32,6 +32,8 @@ const state = {
   trackLayer: null,
   aifsGuidance: null,
   aifsLayer: null,
+  selectedAifsStormId: '',
+  aifsMapTouched: false,
   busy: false,
 };
 
@@ -41,6 +43,7 @@ const el = {
   status: $('#data-status'), refresh: $('#refresh-button'), locationSelect: $('#location-select'),
   aifsStatus: $('#aifs-status'), aifsContent: $('#aifs-guidance-content'), aifsRunLabel: $('#aifs-run-label'),
   aifsRefresh: $('#aifs-refresh-button'), aifsTrackToggle: $('#aifs-track-toggle'),
+  aifsStageOutlook: $('#aifs-stage-outlook'), aifsScenario: $('#aifs-scenario-select'), aifsStageGrid: $('#aifs-stage-grid'),
   forecastTime: $('#forecast-time'), forecastIssue: $('#forecast-issue'), lastUpdated: $('#last-updated'),
   rain: $('#metric-rain'), gust: $('#metric-gust'), pressure: $('#metric-pressure'), probability: $('#metric-probability'),
   mapMetric: $('#map-metric'), mapLegend: $('#map-legend'), locationList: $('#location-list'),
@@ -328,6 +331,48 @@ function formatLead(hours) {
   return `+${Number.isInteger(days) ? days : days.toFixed(1)} d`;
 }
 
+function formatCoordinate(value, positive, negative) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  const numeric = Number(value);
+  return `${Math.abs(numeric).toFixed(2)}°${numeric < 0 ? negative : positive}`;
+}
+
+function renderAifsStages() {
+  const storms = state.aifsGuidance?.storms || [];
+  const storm = storms.find((item) => item.stormId === state.selectedAifsStormId) || storms[0];
+  if (!storm) {
+    el.aifsStageOutlook.hidden = true;
+    return;
+  }
+  state.selectedAifsStormId = storm.stormId;
+  el.aifsStageOutlook.hidden = false;
+  el.aifsScenario.value = storm.stormId;
+  const stages = storm.forecastStages || [];
+  el.aifsStageGrid.innerHTML = stages.map((stage, index) => {
+    const stageNumber = String(index + 1).padStart(2, '0');
+    if (!Number.isFinite(Number(stage.lat)) || !Number.isFinite(Number(stage.lon))) {
+      return `<article class="aifs-stage-card aifs-stage-empty">
+        <div class="aifs-stage-top"><span class="aifs-stage-number">${stageNumber}</span><span class="aifs-stage-lead">${escapeHTML(formatLead(stage.leadHours))}</span></div>
+        <p class="aifs-stage-date">${escapeHTML(formatTime(stage.validAt, { weekday: 'short', day: 'numeric', month: 'short' }))}</p>
+        <strong class="aifs-stage-missing">No matching forecast centre</strong>
+        <p class="aifs-stage-small">This model system has no track point at this lead.</p>
+      </article>`;
+    }
+    const nearby = (stage.nearbyPlaces || []).filter((place) => Number(place.memberTracksNear) > 0).slice(0, 3);
+    const nearbyMarkup = nearby.length
+      ? `<div class="aifs-nearby-list">${nearby.map((place) => `<span>${escapeHTML(place.district)} <b>${number(place.memberTracksNear, 0)}/${number(place.memberTracksTotal, 0)}</b></span>`).join('')}</div>`
+      : `<p class="aifs-stage-small">No listed coast point is within 150 km of a member track. Nearest: ${escapeHTML(stage.nearbyPlaces?.[0]?.district || 'unavailable')} (${number(stage.nearbyPlaces?.[0]?.medianDistanceKm, 0)} km median distance).</p>`;
+    return `<article class="aifs-stage-card">
+      <div class="aifs-stage-top"><span class="aifs-stage-number">${stageNumber}</span><span class="aifs-stage-lead">${escapeHTML(formatLead(stage.leadHours))}</span></div>
+      <p class="aifs-stage-date">${escapeHTML(formatTime(stage.validAt, { weekday: 'short', day: 'numeric', month: 'short' }))}</p>
+      <div class="aifs-stage-center"><span>ENSEMBLE MEDIAN CENTRE</span><strong>${escapeHTML(formatCoordinate(stage.lat, 'N', 'S'))} · ${escapeHTML(formatCoordinate(stage.lon, 'E', 'W'))}</strong></div>
+      <div class="aifs-stage-class"><span>INDICATIVE INTENSITY CLASS</span><strong>${escapeHTML(stage.windBand || 'Unavailable')}</strong></div>
+      <div class="aifs-stage-metrics"><span>Peak 10 m wind <b>${number(stage.windKmh, 0)} km/h</b></span><span>Central pressure <b>${number(stage.pressureHpa, 0)} hPa</b></span></div>
+      <div class="aifs-stage-nearby"><span>COASTAL POINTS NEAR THE TRACK <small>${number(stage.members, 0)}/${number(stage.availableMemberTracks, 0)} Bay paths at this lead</small></span>${nearbyMarkup}</div>
+    </article>`;
+  }).join('') || '<div class="aifs-empty-state"><strong>Four-stage outlook unavailable for this model system.</strong><p>Try another model scenario or refresh the guidance.</p></div>';
+}
+
 function renderAifsGuidance(payload) {
   state.aifsGuidance = payload;
   const status = payload.status === 'stale' ? 'stale' : payload.status === 'ok' ? 'ok' : 'error';
@@ -342,14 +387,17 @@ function renderAifsGuidance(payload) {
   const hasPaths = status !== 'error' && storms.some((storm) => Array.isArray(storm.bayTracks) && storm.bayTracks.length);
   el.aifsTrackToggle.disabled = !hasPaths;
   if (!hasPaths) el.aifsTrackToggle.checked = false;
+  else if (!state.aifsMapTouched) el.aifsTrackToggle.checked = true;
 
   if (status === 'error') {
+    el.aifsStageOutlook.hidden = true;
     el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>Live AI guidance could not load.</strong><p>${escapeHTML(payload.message || 'Start the local project server, check the internet connection, and refresh.')}</p></div>`;
     drawAifsTracks();
     return;
   }
 
   if (!storms.length) {
+    el.aifsStageOutlook.hidden = true;
     const staleNote = payload.refreshError ? `<p>Refresh issue: ${escapeHTML(payload.refreshError)}</p>` : '';
     el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>No AIFS ensemble track candidate crosses the Bay of Bengal box in this model run.</strong><p>This describes one model run. It does not guarantee that no cyclone will form. Check IMD bulletins for official monitoring.</p>${staleNote}</div>`;
     drawAifsTracks();
@@ -383,6 +431,10 @@ function renderAifsGuidance(payload) {
   const staleNote = payload.refreshError ? `<p class="aifs-run-note">Showing the last successful run because refresh failed: ${escapeHTML(payload.refreshError)}</p>` : '';
   const description = `<p class="aifs-run-note">AIFS member counts describe this model’s track spread; they are not calibrated probabilities. The Bay box is 4–25°N, 78–100°E; the Odisha watch box is 14–23°N, 80–90°E. Follow IMD and OSDMA for official warnings.</p>`;
   el.aifsContent.innerHTML = `<div class="aifs-system-grid">${cards}</div>${description}${staleNote}`;
+  const selectable = storms.slice(0, 4);
+  if (!selectable.some((storm) => storm.stormId === state.selectedAifsStormId)) state.selectedAifsStormId = selectable[0].stormId;
+  el.aifsScenario.innerHTML = selectable.map((storm) => `<option value="${escapeHTML(storm.stormId)}">${escapeHTML(storm.stormId)} · ${storm.bayPathCount}/${storm.availableMemberTracks} Bay paths</option>`).join('');
+  renderAifsStages();
   drawAifsTracks();
 }
 
@@ -412,28 +464,34 @@ function drawAifsTracks() {
   state.aifsLayer = null;
   if (!state.map || !el.aifsTrackToggle.checked || !state.aifsGuidance?.storms?.length) return;
 
+  const storm = state.aifsGuidance.storms.find((item) => item.stormId === state.selectedAifsStormId) || state.aifsGuidance.storms[0];
+  if (!storm) return;
   const layer = L.layerGroup();
   const boundsPoints = [];
-  state.aifsGuidance.storms.slice(0, 4).forEach((storm, stormIndex) => {
-    (storm.bayTracks || []).forEach((track) => {
-      const coordinates = track.points.map((point) => [point.lat, point.lon]);
-      if (coordinates.length < 2) return;
-      boundsPoints.push(...coordinates);
-      L.polyline(coordinates, {
-        color: stormIndex === 0 ? '#3f809d' : '#7e9eaa',
-        weight: 1.5,
-        opacity: .25,
-      }).bindTooltip(`${storm.stormId} · AIFS ensemble member ${track.member}`).addTo(layer);
+  (storm.bayTracks || []).forEach((track) => {
+    const coordinates = track.points.map((point) => [point.lat, point.lon]);
+    if (coordinates.length < 2) return;
+    boundsPoints.push(...coordinates);
+    L.polyline(coordinates, { color: '#3f809d', weight: 1.5, opacity: .24 })
+      .bindTooltip(`${storm.stormId} · AIFS ensemble member ${track.member}`).addTo(layer);
+  });
+  const centre = storm.medianPath || [];
+  if (centre.length >= 2) {
+    const coordinates = centre.map((point) => [point.lat, point.lon]);
+    boundsPoints.push(...coordinates);
+    L.polyline(coordinates, { color: '#0b8e88', weight: 3, opacity: .95 })
+      .bindTooltip(`${storm.stormId} · AIFS ensemble median path (not an official forecast)`).addTo(layer);
+  }
+  (storm.forecastStages || []).forEach((stage, index) => {
+    if (!Number.isFinite(Number(stage.lat)) || !Number.isFinite(Number(stage.lon))) return;
+    const marker = L.marker([stage.lat, stage.lon], {
+      icon: L.divIcon({ className: 'aifs-stage-div-icon', html: `<span>${index + 1}</span>`, iconSize: [24, 24], iconAnchor: [12, 12] }),
+      keyboard: true,
     });
-    const centre = storm.medianPath || [];
-    if (centre.length >= 2) {
-      const coordinates = centre.map((point) => [point.lat, point.lon]);
-      L.polyline(coordinates, { color: '#0b8e88', weight: 3, opacity: .95 })
-        .bindTooltip(`${storm.stormId} · AIFS ensemble median path (not an official forecast)`).addTo(layer);
-      const endpoint = centre.at(-1);
-      L.circleMarker([endpoint.lat, endpoint.lon], { radius: 5, color: '#fff', weight: 2, fillColor: '#0b8e88', fillOpacity: 1 })
-        .bindTooltip(`${storm.stormId} · ${formatLead(endpoint.leadHours)} from model run`).addTo(layer);
-    }
+    marker.bindTooltip(`${storm.stormId} · Stage ${index + 1} · ${formatLead(stage.leadHours)}`)
+      .bindPopup(`<strong>${storm.stormId} · ${formatLead(stage.leadHours)}</strong><br>Ensemble median centre: ${formatCoordinate(stage.lat, 'N', 'S')}, ${formatCoordinate(stage.lon, 'E', 'W')}<br>Indicative wind band: ${escapeHTML(stage.windBand || 'unavailable')}<br>Peak model 10 m wind: ${number(stage.windKmh, 0)} km/h`)
+      .addTo(layer);
+    boundsPoints.push([stage.lat, stage.lon]);
   });
   if (!boundsPoints.length) return;
   layer.addTo(state.map);
@@ -586,7 +644,12 @@ function connectControls() {
     renderStormDetails();
   });
   el.aifsRefresh.addEventListener('click',()=>loadAifsGuidance(true));
-  el.aifsTrackToggle.addEventListener('change',drawAifsTracks);
+  el.aifsTrackToggle.addEventListener('change',()=>{state.aifsMapTouched=true;drawAifsTracks();});
+  el.aifsScenario.addEventListener('change',(event)=>{
+    state.selectedAifsStormId=event.target.value;
+    renderAifsStages();
+    drawAifsTracks();
+  });
 }
 
 populateLocations();
