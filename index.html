@@ -107,6 +107,57 @@
           </article>
         </section>
 
+        <section class="panel ai-workbench" id="cyclone-ai">
+          <div class="ai-workbench-heading">
+            <div>
+              <p class="eyebrow">SATELLITE AI/ML · PROJECT WORKFLOW</p>
+              <h2>From cloud pattern to cyclone outlook</h2>
+              <p class="section-copy">The connected dashboard provides weather, river, marine and historical-track context. Satellite imagery and a trained cyclone model are the next implementation stage.</p>
+            </div>
+            <span class="model-status"><i></i> MODEL STATUS · DESIGN STAGE</span>
+          </div>
+
+          <div class="ai-stage-grid">
+            <article class="ai-stage">
+              <span class="ai-stage-number">01</span>
+              <div><span class="ai-stage-label">OBSERVE</span><h3>Satellite image sequence</h3></div>
+              <p>Use INSAT-3D/3DR infrared and water-vapour channels to follow cloud-top temperature and storm structure over time.</p>
+              <a href="https://mausam.imd.gov.in/imd_latest/contents/satmet.php" target="_blank" rel="noreferrer">IMD satellite products ↗</a>
+            </article>
+            <article class="ai-stage">
+              <span class="ai-stage-number">02</span>
+              <div><span class="ai-stage-label">IDENTIFY</span><h3>Find the storm centre</h3></div>
+              <p>A vision model can locate an organized rotating cloud system and estimate its centre with a confidence score.</p>
+              <small>Planned: image detection and centre localization</small>
+            </article>
+            <article class="ai-stage">
+              <span class="ai-stage-number">03</span>
+              <div><span class="ai-stage-label">CLASSIFY</span><h3>Describe its pattern</h3></div>
+              <p>Candidate labels: organizing, symmetric or eye-like, sheared or asymmetric, and weakening. These need expert-reviewed training labels.</p>
+              <small>Pattern tags are not official storm categories</small>
+            </article>
+            <article class="ai-stage">
+              <span class="ai-stage-number">04</span>
+              <div><span class="ai-stage-label">PREDICT</span><h3>Estimate the next change</h3></div>
+              <p>A time-series model could combine image sequences, storm history and environmental data to estimate track and intensity trend with uncertainty.</p>
+              <small>Planned: 6, 12 and 24-hour guidance</small>
+            </article>
+          </div>
+
+          <div class="ai-data-strip">
+            <div class="ai-data-block">
+              <span class="ai-data-label">HISTORICAL SATELLITE TRAINING DATA</span>
+              <p><strong>NOAA HURSAT-B1</strong> offers storm-centred infrared imagery at 3-hourly, about 8 km resolution through 2015. It is a historical training source, not a live feed.</p>
+              <a href="https://www.ncei.noaa.gov/products/hurricane-satellite-data" target="_blank" rel="noreferrer">Explore NOAA HURSAT ↗</a>
+            </div>
+            <div class="ai-data-block ai-readiness">
+              <span class="ai-data-label">WHAT WORKS IN THIS PROTOTYPE</span>
+              <div class="readiness-chips"><span class="ready-chip">Weather APIs connected</span><span class="ready-chip">IBTrACS replay connected</span><span class="planned-chip">Satellite pixels not ingested</span><span class="planned-chip">AI model not trained</span></div>
+              <p>For Odisha use, the next step is to pair accessible INSAT imagery with reviewed storm labels, then evaluate on storms kept out of training. Follow IMD/OSDMA for real warnings.</p>
+            </div>
+          </div>
+        </section>
+
         <section class="panel archive-panel">
           <div class="archive-top">
             <div><p class="eyebrow">NOAA NCEI IBTRACS · NORTH INDIAN OCEAN</p><h2>Replay a Bay of Bengal cyclone</h2><p class="section-copy">65 named historical tracks since 1980 that passed through the Bay focus area. This is observed best-track history, not a forecast path.</p></div>

@@ -21,6 +21,7 @@ Then open `http://localhost:8000`. Do not open `index.html` directly with `file:
 - **River-flow context:** two representative GloFAS v4 daily river-discharge series, with the 25th–75th percentile ensemble range.
 - **Nearshore context:** a marine forecast near Puri showing significant wave height and modelled sea-level height.
 - **Historical cyclone replay:** 65 named tracks from NOAA NCEI IBTrACS v04r01 North Indian Ocean data. The included subset covers named storms since 1980 that passed through the Bay of Bengal focus box. Selecting a storm draws its archived track on the map.
+- **AI/ML project workflow:** the page outlines how INSAT imagery could feed cyclone detection, morphology classification and short-range track/intensity guidance. It clearly labels satellite ingestion and trained inference as not yet implemented.
 
 ## Data sources and limitations
 
@@ -30,6 +31,7 @@ Then open `http://localhost:8000`. Do not open `index.html` directly with `file:
 | River flow | [Open-Meteo Flood API / GloFAS v4](https://open-meteo.com/en/docs/flood-api) | Daily simulated discharge and forecast ensemble percentiles at two model cells | About 5 km grid; a nearby river can be selected incorrectly, so confirm the cell against a gauge or river map. It is not an official flood warning. |
 | Marine | [Open-Meteo Marine API](https://open-meteo.com/en/docs/marine-weather-api) | Hourly wave height and sea-level height at one sea grid near Puri | Coastal sea-level accuracy is limited; it is not surge guidance, a tide-gauge observation, a navigation product, or an evacuation threshold. |
 | Historical tracks | [NOAA NCEI IBTrACS v04r01](https://www.ncei.noaa.gov/products/international-best-track-archive) | Best-track positions from the North Indian Ocean basin | This is historical track data, not a forecast track. Recent records can be provisional; wind sources and quality vary across contributing agencies. |
+| Satellite imagery (planned) | [IMD INSAT satellite services](https://mausam.imd.gov.in/imd_latest/contents/satmet.php) and [NOAA HURSAT](https://www.ncei.noaa.gov/products/hurricane-satellite-data) | INSAT-3D/3DR products for current monitoring; historical HURSAT-B1 imagery for research and training | Satellite pixels are not ingested by this prototype. HURSAT-B1 ends in 2015, so it cannot stand in for a live feed or recent local training cases. |
 | Map | [OpenStreetMap](https://www.openstreetmap.org/copyright) | Interactive reference map tiles | Tiles load only as a viewer opens the map; attribution is displayed on the map. |
 
 The compact track file is `data/ibtracs-bay-of-bengal.json`. It was derived from NOAA's North Indian Ocean CSV subset, keeps named tracks with at least one point inside 7–24°N and 78–94°E since 1980, and clips each retained path to the map display bounds. It retains time, location, WMO and USA wind fields, and WMO pressure where available. The displayed peak wind names the agency field used; wind averaging conventions differ across sources. Source file and access date are recorded in the JSON metadata.
@@ -38,7 +40,7 @@ Open-Meteo's free API is non-commercial and its data require CC BY 4.0 attributi
 
 ## What it does not claim
 
-This website does not identify a forming cyclone, calculate a cyclone's future path or landfall, issue a district warning, estimate a flood probability, or combine the separate data products into a calibrated risk score. The hourly weather forecast is not an official cyclone bulletin. Follow the India Meteorological Department (IMD) and Odisha State Disaster Management Authority (OSDMA) for operational guidance.
+This website does not ingest satellite pixels, identify a forming cyclone, calculate a cyclone's future path or landfall, issue a district warning, estimate a flood probability, or combine the separate data products into a calibrated risk score. The AI/ML panel is a design workflow, not model output. The hourly weather forecast is not an official cyclone bulletin. Follow the India Meteorological Department (IMD) and Odisha State Disaster Management Authority (OSDMA) for operational guidance.
 
 ## A sensible next implementation step
 
