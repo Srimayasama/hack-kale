@@ -1,0 +1,118 @@
+{
+  "status": "trained",
+  "modelName": "AtmosScale Bay of Bengal Extra Trees",
+  "algorithm": "Extra Trees regression with median imputation",
+  "trainedAt": "2026-11-26T07:27:42.589457Z",
+  "source": "NOAA NCEI IBTrACS v04r01 North Indian Ocean CSV; Bay of Bengal sub-basin; final main tracks, 1980\u20132024",
+  "trainingEndYear": 2024,
+  "holdoutStartYear": 2015,
+  "stormCount": 228,
+  "filteredArchiveStormCount": 323,
+  "trainStormCount": 178,
+  "holdoutStormCount": 50,
+  "dataSummary": {
+    "stormCount": 228,
+    "radiusStormCount": 66,
+    "rowsByLead": {
+      "24": 2600,
+      "48": 1763,
+      "72": 1123,
+      "96": 661
+    },
+    "radiusRowsByLead": {
+      "24": 641,
+      "48": 469,
+      "72": 300,
+      "96": 161
+    }
+  },
+  "metrics": {
+    "24": {
+      "centerMeanErrorKm": 149.48330845796303,
+      "centerMedianErrorKm": 137.24944686890242,
+      "linearMotionBaselineMeanErrorKm": 164.69091431204527,
+      "testExamples": 551,
+      "windMaeKt": 10.146701116539967,
+      "windMaeKtExamples": 514,
+      "windPersistenceMaeKt": 12.732919254658386,
+      "pressureMaeHpa": 6.057669248145298,
+      "pressureMaeHpaExamples": 514,
+      "pressurePersistenceMaeHpa": 7.0186335403726705,
+      "r34MaeKm": 56.32641572739969,
+      "r34MaeKmExamples": 264
+    },
+    "48": {
+      "centerMeanErrorKm": 309.0358721282,
+      "centerMedianErrorKm": 296.62003388746166,
+      "linearMotionBaselineMeanErrorKm": 377.94078526594285,
+      "testExamples": 369,
+      "windMaeKt": 15.84162871802883,
+      "windMaeKtExamples": 340,
+      "windPersistenceMaeKt": 20.19672131147541,
+      "pressureMaeHpa": 9.599480785360624,
+      "pressureMaeHpaExamples": 340,
+      "pressurePersistenceMaeHpa": 11.563934426229508,
+      "r34MaeKm": 53.791058541542405,
+      "r34MaeKmExamples": 197
+    },
+    "72": {
+      "centerMeanErrorKm": 455.0458803085552,
+      "centerMedianErrorKm": 432.508016075123,
+      "linearMotionBaselineMeanErrorKm": 615.7030248429267,
+      "testExamples": 230,
+      "windMaeKt": 17.098047606529505,
+      "windMaeKtExamples": 207,
+      "windPersistenceMaeKt": 22.824858757062145,
+      "pressureMaeHpa": 11.124402153384505,
+      "pressureMaeHpaExamples": 207,
+      "pressurePersistenceMaeHpa": 13.807909604519773,
+      "r34MaeKm": 57.73737230104947,
+      "r34MaeKmExamples": 126
+    },
+    "96": {
+      "centerMeanErrorKm": 600.8460492728578,
+      "centerMedianErrorKm": 608.7905152048938,
+      "linearMotionBaselineMeanErrorKm": 854.8679260102012,
+      "testExamples": 130,
+      "windMaeKt": 16.919201128192586,
+      "windMaeKtExamples": 110,
+      "windPersistenceMaeKt": 24.775280898876403,
+      "pressureMaeHpa": 10.023373393021071,
+      "pressureMaeHpaExamples": 110,
+      "pressurePersistenceMaeHpa": 14.842696629213483,
+      "r34MaeKm": 59.96056652140999,
+      "r34MaeKmExamples": 66
+    }
+  },
+  "features": [
+    "current_lat",
+    "current_lon",
+    "lat_change_6h",
+    "lon_change_6h",
+    "lat_change_12h",
+    "lon_change_12h",
+    "lat_change_24h",
+    "lon_change_24h",
+    "wind_now_kt",
+    "wind_change_6h_kt",
+    "wind_change_12h_kt",
+    "pressure_now_hpa",
+    "pressure_change_6h_hpa",
+    "pressure_change_12h_hpa",
+    "month_sin",
+    "month_cos"
+  ],
+  "targets": [
+    "centre latitude/longitude",
+    "WMO wind",
+    "WMO pressure",
+    "USA/JTWC 34-kt wind radius where present"
+  ],
+  "limitations": [
+    "Track-only model: it does not use live satellite pixels or atmospheric reanalysis fields.",
+    "Wind labels follow North Indian Ocean WMO reports and can have varying averaging conventions.",
+    "34-kt wind-radius labels come from USA/JTWC fields and are sparse; the radius is not a damage boundary.",
+    "The live seed uses ECMWF AIFS forecast points as a motion history proxy, not observed past fixes.",
+    "Held-out errors are research diagnostics, not calibrated confidence bounds or warning thresholds."
+  ]
+}

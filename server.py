@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local static server with a live ECMWF AIFS cyclone-track endpoint."""
+"""Local dashboard server with live ECMWF AIFS and AtmosScale ML endpoints."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
 from eccodes.highlevel import BUFRMessage
@@ -253,6 +253,7 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
         north_bay_leads = []
         odisha_leads = []
         lead_positions: dict[int, list[tuple[float, float]]] = {}
+        all_candidate_positions: dict[int, list[dict]] = {}
 
         for track in member_tracks:
             bay_points = _region_path(track["points"], BAY_BOX)
@@ -260,6 +261,8 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
             odisha_points = _region_path(track["points"], ODISHA_WATCH_BOX)
             if len(bay_points) >= 2:
                 bay_tracks.append({"member": track["member"], "points": bay_points})
+                for point in track["points"]:
+                    all_candidate_positions.setdefault(point["leadHours"], []).append(point)
                 bay_leads.extend(point["leadHours"] for point in bay_points)
                 for point in bay_points:
                     lead_positions.setdefault(point["leadHours"], []).append(point)
@@ -289,6 +292,20 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
                 "members": len(positions),
             })
 
+        context_path = []
+        for lead, positions in sorted(all_candidate_positions.items()):
+            winds = [point["windKmh"] for point in positions if point.get("windKmh") is not None]
+            pressures = [point["pressureHpa"] for point in positions if point.get("pressureHpa") is not None]
+            context_path.append({
+                "leadHours": lead,
+                "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
+                "lat": round(float(np.median([point["lat"] for point in positions])), 3),
+                "lon": round(float(np.median([point["lon"] for point in positions])), 3),
+                "windKmh": round(float(np.median(winds)), 1) if winds else None,
+                "pressureHpa": round(float(np.median(pressures)), 1) if pressures else None,
+                "members": len(positions),
+            })
+
         summaries.append({
             "stormId": storm_id,
             "availableMemberTracks": len(member_tracks),
@@ -305,9 +322,36 @@ def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_
             "bayTracks": bay_tracks,
             "odishaTracks": odisha_tracks,
             "medianPath": median_path,
+            "contextPath": context_path,
             "forecastStages": _forecast_stages(bay_tracks, run_time),
         })
     return sorted(summaries, key=lambda item: (-item["bayPathCount"], item["stormId"]))
+
+
+def trained_forecast(storm_id: str) -> dict:
+    """Run the saved historical ML model using the selected live AIFS candidate."""
+    from ml.cyclone_forecaster import get_model_metadata, predict_live
+
+    metadata = get_model_metadata()
+    if metadata.get("status") != "trained":
+        return {"status": "unavailable", "message": metadata.get("message", "Train the model before requesting a forecast.")}
+    guidance = get_live_guidance()
+    if guidance.get("status") not in {"ok", "stale"}:
+        return {"status": "unavailable", "message": "Live AIFS context is not available, so the trained model has no current storm state to use."}
+    storm = next((item for item in guidance.get("storms", []) if item.get("stormId") == storm_id), None)
+    if not storm:
+        return {"status": "unavailable", "message": "Select a current AIFS model system that has a Bay of Bengal track."}
+    run_value = guidance.get("modelRun")
+    if not run_value:
+        return {"status": "unavailable", "message": "The AIFS model run time is missing."}
+    run_time = datetime.fromisoformat(run_value.replace("Z", "+00:00"))
+    try:
+        payload = predict_live(storm.get("contextPath", []), run_time)
+    except (ValueError, KeyError, FileNotFoundError) as error:
+        return {"status": "unavailable", "message": str(error)}
+    payload["stormId"] = storm_id
+    payload["aifsModelRun"] = run_value
+    return payload
 
 
 def _retrieve_tracks(model: str, stream: str, run_time: datetime | None = None) -> tuple[datetime | None, dict[str, list[dict]]]:
@@ -405,6 +449,18 @@ class AtmosScaleHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if parsed.path == "/api/trained-forecast":
+            query = parse_qs(parsed.query)
+            storm_id = (query.get("stormId") or [""])[0]
+            payload = trained_forecast(storm_id)
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(200 if payload.get("status") == "ok" else 503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         super().do_GET()
 
 
@@ -412,7 +468,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
     server = ThreadingHTTPServer(("127.0.0.1", port), AtmosScaleHandler)
     print(f"AtmosScale AI is available at http://127.0.0.1:{port}")
-    print("AIFS track guidance loads from ECMWF Open Data when requested by the page.")
+    print("ECMWF AIFS guidance and the saved AtmosScale historical ML model load when requested by the page.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
