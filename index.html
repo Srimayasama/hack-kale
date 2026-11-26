@@ -29,7 +29,7 @@
       <main id="top">
         <aside class="run-notice" id="file-protocol-notice" hidden role="status">
           <span class="run-notice-icon" aria-hidden="true">!</span>
-          <p><strong>Open this project through a local web server.</strong> You opened the HTML file directly, which prevents the historical track file from loading and gives map tiles no normal web-page address to send as a referrer. From this project folder, run <code>python3 -m http.server 8000</code>, then open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>.</p>
+          <p><strong>Open this project with its local server.</strong> Directly opening the HTML file prevents the track archive and live AIFS forecast service from loading. From this project folder, run <code>python3 server.py</code>, then open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>.</p>
         </aside>
         <section class="hero">
           <div>
@@ -46,6 +46,28 @@
           <div class="control-actions"><button class="text-button" id="download-button" type="button">Export this forecast <span aria-hidden="true">↓</span></button></div>
         </section>
 
+        <section class="panel live-guidance-panel" aria-labelledby="live-guidance-title">
+          <div class="live-guidance-heading">
+            <div>
+              <p class="eyebrow">LIVE AI CYCLONE GUIDANCE · ECMWF AIFS ENSEMBLE</p>
+              <h2 id="live-guidance-title">Current model outlook for the Bay</h2>
+              <p class="section-copy">The AIFS model updates through fresh forecast runs. Track counts show model-member paths in each region; they are not calibrated probabilities or official warnings.</p>
+            </div>
+            <span class="aifs-status loading" id="aifs-status"><i></i><span>CONNECTING TO AIFS</span></span>
+          </div>
+          <div id="aifs-guidance-content" class="aifs-guidance-content" role="status" aria-live="polite">
+            <div class="aifs-loading-row"><span class="loading-spinner" aria-hidden="true"></span><span>Fetching the latest ECMWF AI ensemble track guidance…</span></div>
+          </div>
+          <div class="aifs-footer">
+            <span id="aifs-run-label">Model run: waiting for ECMWF</span>
+            <div>
+              <button id="aifs-refresh-button" class="text-button" type="button">Refresh AI guidance <span aria-hidden="true">↻</span></button>
+              <a href="https://www.ecmwf.int/en/forecasts/datasets/aifs-ens-tropical-cyclone-activity-including-genesis" target="_blank" rel="noreferrer">ECMWF AIFS source ↗</a>
+              <a href="https://mausam.imd.gov.in/imd_latest/contents/cyclone.php" target="_blank" rel="noreferrer">Official IMD cyclone bulletins ↗</a>
+            </div>
+          </div>
+        </section>
+
         <section class="metric-grid" aria-label="Selected location forecast at chosen hour">
           <article class="metric-card metric-rain"><div class="metric-top"><span class="metric-icon">☂</span><span class="metric-kind">WEATHER MODEL</span></div><span class="metric-label">Hourly precipitation</span><div class="metric-value"><strong id="metric-rain">—</strong><span>mm</span></div><small id="metric-rain-note">preceding 60 minutes</small></article>
           <article class="metric-card metric-wind"><div class="metric-top"><span class="metric-icon">⌁</span><span class="metric-kind">WEATHER MODEL</span></div><span class="metric-label">Wind gust</span><div class="metric-value"><strong id="metric-gust">—</strong><span>km/h</span></div><small id="metric-gust-note">10 m above ground</small></article>
@@ -57,7 +79,10 @@
           <article class="panel map-panel">
             <div class="panel-heading map-heading">
               <div><p class="eyebrow">LIVE POINT FORECASTS + HISTORICAL TRACKS</p><h2>Odisha coast, in context</h2></div>
-              <label class="map-layer-control"><input id="track-toggle" type="checkbox"><span class="switch"></span><span>Show cyclone track</span></label>
+              <div class="map-layer-controls">
+                <label class="map-layer-control"><input id="track-toggle" type="checkbox"><span class="switch"></span><span>Historical track</span></label>
+                <label class="map-layer-control"><input id="aifs-track-toggle" type="checkbox" disabled><span class="switch"></span><span>Live AIFS ensemble</span></label>
+              </div>
             </div>
             <div class="map-toolbar">
               <label for="map-metric">Station colour</label>
@@ -112,9 +137,9 @@
             <div>
               <p class="eyebrow">SATELLITE AI/ML · PROJECT WORKFLOW</p>
               <h2>From cloud pattern to cyclone outlook</h2>
-              <p class="section-copy">The connected dashboard provides weather, river, marine and historical-track context. Satellite imagery and a trained cyclone model are the next implementation stage.</p>
+              <p class="section-copy">The dashboard now displays live ECMWF AI ensemble tracks. Its Odisha-specific satellite image detection and pattern classifier still need to be built and trained.</p>
             </div>
-            <span class="model-status"><i></i> MODEL STATUS · DESIGN STAGE</span>
+            <span class="model-status"><i></i> SATELLITE MODEL · NEXT STAGE</span>
           </div>
 
           <div class="ai-stage-grid">
@@ -139,8 +164,8 @@
             <article class="ai-stage">
               <span class="ai-stage-number">04</span>
               <div><span class="ai-stage-label">PREDICT</span><h3>Estimate the next change</h3></div>
-              <p>A time-series model could combine image sequences, storm history and environmental data to estimate track and intensity trend with uncertainty.</p>
-              <small>Planned: 6, 12 and 24-hour guidance</small>
+              <p>Live baseline: ECMWF AIFS ensemble track guidance. The next model step is combining local satellite patterns with environmental data for Odisha.</p>
+              <small>Current AIFS horizon: up to 15 days</small>
             </article>
           </div>
 
@@ -152,7 +177,7 @@
             </div>
             <div class="ai-data-block ai-readiness">
               <span class="ai-data-label">WHAT WORKS IN THIS PROTOTYPE</span>
-              <div class="readiness-chips"><span class="ready-chip">Weather APIs connected</span><span class="ready-chip">IBTrACS replay connected</span><span class="planned-chip">Satellite pixels not ingested</span><span class="planned-chip">AI model not trained</span></div>
+              <div class="readiness-chips"><span class="ready-chip">AIFS live guidance connected</span><span class="ready-chip">Weather APIs connected</span><span class="ready-chip">IBTrACS replay connected</span><span class="planned-chip">Satellite pixels not ingested</span><span class="planned-chip">Odisha classifier not trained</span></div>
               <p>For Odisha use, the next step is to pair accessible INSAT imagery with reviewed storm labels, then evaluate on storms kept out of training. Follow IMD/OSDMA for real warnings.</p>
             </div>
           </div>
@@ -177,7 +202,7 @@
             <a class="source-card" href="https://open-meteo.com/en/docs/marine-weather-api" target="_blank" rel="noreferrer"><span class="source-index">03</span><span><strong>Marine forecast</strong><small>Open-Meteo Marine · near-Puri sea grid</small></span><span class="source-arrow">↗</span></a>
             <a class="source-card" href="https://www.ncei.noaa.gov/products/international-best-track-archive" target="_blank" rel="noreferrer"><span class="source-index">04</span><span><strong>Storm archive</strong><small>NOAA NCEI IBTrACS v04r01 · named North Indian tracks</small></span><span class="source-arrow">↗</span></a>
           </div>
-          <p class="attribution">Weather, flood and marine data: Open-Meteo (CC BY 4.0; educational non-commercial use). Underlying providers include national weather centres, Copernicus Marine, NOAA NCEP and GloFAS. Cyclone tracks: NOAA NCEI IBTrACS. Map © OpenStreetMap contributors. Data may be delayed, revised or unavailable.</p>
+          <p class="attribution">Weather, flood and marine data: Open-Meteo (CC BY 4.0; educational non-commercial use). Live AI cyclone guidance: ECMWF AIFS open data (CC BY 4.0). Historical tracks: NOAA NCEI IBTrACS. Underlying providers include national weather centres, Copernicus Marine, NOAA NCEP and GloFAS. Map © OpenStreetMap contributors. Data may be delayed, revised or unavailable.</p>
         </section>
 
         <footer class="page-footer"><span>ATMOSSCALE AI <i>·</i> HACKKALP 2K26 <i>·</i> STUDENT PROTOTYPE</span><a href="https://rsmcnewdelhi.imd.gov.in/" target="_blank" rel="noreferrer">Official cyclone warnings: IMD RSMC New Delhi ↗</a></footer>

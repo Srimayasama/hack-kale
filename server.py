@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""Local static server with a live ECMWF AIFS cyclone-track endpoint."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import threading
+import time
+from datetime import datetime, timedelta, timezone
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import numpy as np
+from eccodes.highlevel import BUFRMessage
+from ecmwf.opendata import Client
+
+
+ROOT = Path(__file__).resolve().parent
+CACHE_SECONDS = 30 * 60
+BAY_BOX = {"south": 4.0, "north": 25.0, "west": 78.0, "east": 100.0}
+NORTH_BAY_BOX = {"south": 10.0, "north": 24.0, "west": 78.0, "east": 92.0}
+ODISHA_WATCH_BOX = {"south": 14.0, "north": 23.0, "west": 80.0, "east": 90.0}
+cache_lock = threading.Lock()
+cached_guidance: dict | None = None
+cached_at = 0.0
+
+
+def _flat_values(value):
+    if value is None:
+        return []
+    array = np.ma.asarray(value)
+    if array.ndim == 0:
+        return [array.item()]
+    return list(array.reshape(-1))
+
+
+def _plain(value):
+    if value is None or np.ma.is_masked(value):
+        return None
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return value
+
+
+def _rank_value(ranked: dict, rank: int, field: str, member_index: int):
+    values = _flat_values(ranked.get(f"#{rank}#{field}"))
+    if not values:
+        return None
+    value = values[member_index] if len(values) > 1 else values[0]
+    return _plain(value)
+
+
+def _inside(point: dict, box: dict) -> bool:
+    return (
+        box["south"] <= point["lat"] <= box["north"]
+        and box["west"] <= point["lon"] <= box["east"]
+    )
+
+
+def _run_time_from_header(header) -> datetime:
+    return datetime(
+        int(header["typicalYear"]),
+        int(header["typicalMonth"]),
+        int(header["typicalDay"]),
+        int(header["typicalHour"]),
+        int(header.get("typicalMinute", 0)),
+        tzinfo=timezone.utc,
+    )
+
+
+def _read_tracks(path: str) -> tuple[datetime | None, dict[str, list[dict]]]:
+    run_time = None
+    grouped: dict[str, list[dict]] = {}
+    with open(path, "rb") as source:
+        while True:
+            try:
+                message = BUFRMessage(source)
+            except EOFError:
+                break
+            with message:
+                message.unpack()
+                if run_time is None:
+                    run_time = _run_time_from_header(message.header)
+                ranked = message.data.as_dict(ranked=True)
+                storm_ids = [_plain(value) for value in _flat_values(ranked.get("#1#stormIdentifier"))]
+                member_ids = [_plain(value) for value in _flat_values(ranked.get("#1#ensembleMemberNumber"))]
+                member_count = max(len(storm_ids), len(member_ids), int(message.header["numberOfSubsets"]))
+                lead_ranks = sorted(
+                    int(key.split("#")[1])
+                    for key in ranked
+                    if key.endswith("#timePeriod")
+                )
+                rank_data = []
+                for rank in lead_ranks:
+                    rank_data.append((
+                        _flat_values(ranked.get(f"#{rank}#timePeriod")),
+                        _flat_values(ranked.get(f"#{rank}#latitude")),
+                        _flat_values(ranked.get(f"#{rank}#longitude")),
+                    ))
+
+                for member_index in range(member_count):
+                    storm_id = storm_ids[member_index] if member_index < len(storm_ids) else (storm_ids[0] if storm_ids else "Unknown")
+                    if not storm_id:
+                        continue
+                    points = []
+                    for times, latitudes, longitudes in rank_data:
+                        lead = _plain(times[member_index]) if member_index < len(times) else None
+                        lat = _plain(latitudes[member_index]) if member_index < len(latitudes) else None
+                        lon = _plain(longitudes[member_index]) if member_index < len(longitudes) else None
+                        if lead is None or lat is None or lon is None:
+                            continue
+                        lat = float(lat)
+                        lon = float(lon)
+                        if not (-90 <= lat <= 90):
+                            continue
+                        if lon > 180:
+                            lon -= 360
+                        if not (-180 <= lon <= 180) or (abs(lat) < 0.01 and abs(lon) < 0.01):
+                            continue
+                        lead = int(lead)
+                        point = {
+                            "leadHours": lead,
+                            "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
+                            "lat": round(lat, 3),
+                            "lon": round(lon, 3),
+                        }
+                        points.append(point)
+
+                    points.sort(key=lambda item: item["leadHours"])
+                    member_id = member_ids[member_index] if member_index < len(member_ids) else member_index + 1
+                    grouped.setdefault(str(storm_id), []).append({"member": int(member_id), "points": points})
+    return run_time, grouped
+
+
+def _region_path(points: list[dict], box: dict) -> list[dict]:
+    return [point for point in points if _inside(point, box)]
+
+
+def _summarize_tracks(groups: dict[str, list[dict]], run_time: datetime, single_ids: set[str]) -> list[dict]:
+    summaries = []
+    for storm_id, member_tracks in groups.items():
+        bay_tracks = []
+        north_bay_tracks = []
+        odisha_tracks = []
+        bay_leads = []
+        north_bay_leads = []
+        odisha_leads = []
+        lead_positions: dict[int, list[tuple[float, float]]] = {}
+
+        for track in member_tracks:
+            bay_points = _region_path(track["points"], BAY_BOX)
+            north_bay_points = _region_path(track["points"], NORTH_BAY_BOX)
+            odisha_points = _region_path(track["points"], ODISHA_WATCH_BOX)
+            if len(bay_points) >= 2:
+                bay_tracks.append({"member": track["member"], "points": bay_points})
+                bay_leads.extend(point["leadHours"] for point in bay_points)
+                for point in bay_points:
+                    lead_positions.setdefault(point["leadHours"], []).append((point["lat"], point["lon"]))
+            if len(north_bay_points) >= 2:
+                north_bay_tracks.append({"member": track["member"], "points": north_bay_points})
+                north_bay_leads.extend(point["leadHours"] for point in north_bay_points)
+            if len(odisha_points) >= 2:
+                odisha_tracks.append({"member": track["member"], "points": odisha_points})
+                odisha_leads.extend(point["leadHours"] for point in odisha_points)
+
+        if len(bay_tracks) < 2:
+            continue
+
+        median_path = []
+        for lead, positions in sorted(lead_positions.items()):
+            if len(positions) < 2:
+                continue
+            median_path.append({
+                "leadHours": lead,
+                "validAt": (run_time + timedelta(hours=lead)).isoformat().replace("+00:00", "Z"),
+                "lat": round(float(np.median([position[0] for position in positions])), 3),
+                "lon": round(float(np.median([position[1] for position in positions])), 3),
+                "members": len(positions),
+            })
+
+        summaries.append({
+            "stormId": storm_id,
+            "availableMemberTracks": len(member_tracks),
+            "bayPathCount": len(bay_tracks),
+            "northBayPathCount": len(north_bay_tracks),
+            "odishaPathCount": len(odisha_tracks),
+            "bayLeadStart": min(bay_leads) if bay_leads else None,
+            "bayLeadEnd": max(bay_leads) if bay_leads else None,
+            "northBayLeadStart": min(north_bay_leads) if north_bay_leads else None,
+            "northBayLeadEnd": max(north_bay_leads) if north_bay_leads else None,
+            "odishaLeadStart": min(odisha_leads) if odisha_leads else None,
+            "odishaLeadEnd": max(odisha_leads) if odisha_leads else None,
+            "singleModelAlsoForecasts": storm_id in single_ids,
+            "bayTracks": bay_tracks,
+            "odishaTracks": odisha_tracks,
+            "medianPath": median_path,
+        })
+    return sorted(summaries, key=lambda item: (-item["bayPathCount"], item["stormId"]))
+
+
+def _retrieve_tracks(model: str, stream: str, run_time: datetime | None = None) -> tuple[datetime | None, dict[str, list[dict]]]:
+    client = Client(
+        source="ecmwf",
+        model=model,
+        maximum_retries=2,
+        retry_after=5,
+        use_server_retry_after=False,
+    )
+    suffix = "aifs-ens" if model == "aifs-ens" else "aifs-single"
+    with tempfile.NamedTemporaryFile(prefix=f"atmoscale-{suffix}-", suffix=".bufr", delete=False) as temporary:
+        target = temporary.name
+    try:
+        request = {"stream": stream, "type": "tf", "step": 360, "target": target}
+        if run_time is not None:
+            request["date"] = run_time.strftime("%Y-%m-%d")
+            request["time"] = run_time.hour
+        client.retrieve(**request)
+        return _read_tracks(target)
+    finally:
+        try:
+            os.unlink(target)
+        except OSError:
+            pass
+
+
+def fetch_live_guidance() -> dict:
+    run_time, ensemble_groups = _retrieve_tracks("aifs-ens", "enfo")
+    if run_time is None:
+        raise RuntimeError("ECMWF returned no AIFS ensemble track message for the latest run.")
+
+    single_ids: set[str] = set()
+    single_error = None
+    try:
+        single_run, single_groups = _retrieve_tracks("aifs-single", "oper", run_time)
+        if single_run and single_run != run_time:
+            raise RuntimeError("The AIFS single and ensemble files use different run times.")
+        single_ids = set(single_groups)
+    except Exception as error:  # Keep the ensemble product usable if its companion file is late.
+        single_error = str(error)
+
+    return {
+        "status": "ok",
+        "model": "ECMWF AIFS Ensemble",
+        "modelRun": run_time.isoformat().replace("+00:00", "Z"),
+        "retrievedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "forecastHorizonHours": 360,
+        "bayBox": BAY_BOX,
+        "northBayBox": NORTH_BAY_BOX,
+        "odishaBox": ODISHA_WATCH_BOX,
+        "storms": _summarize_tracks(ensemble_groups, run_time, single_ids),
+        "singleModelAvailable": single_error is None,
+        "singleModelError": single_error,
+        "attribution": "ECMWF AIFS open data · CC BY 4.0",
+    }
+
+
+def get_live_guidance(force: bool = False) -> dict:
+    global cached_guidance, cached_at
+    with cache_lock:
+        if not force and cached_guidance and time.time() - cached_at < CACHE_SECONDS:
+            return {**cached_guidance, "cacheAgeSeconds": int(time.time() - cached_at)}
+        try:
+            guidance = fetch_live_guidance()
+        except Exception as error:
+            if cached_guidance:
+                return {
+                    **cached_guidance,
+                    "status": "stale",
+                    "refreshError": str(error),
+                    "cacheAgeSeconds": int(time.time() - cached_at),
+                }
+            return {"status": "error", "message": str(error)}
+        cached_guidance = guidance
+        cached_at = time.time()
+        return {**guidance, "cacheAgeSeconds": 0}
+
+
+class AtmosScaleHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def do_GET(self):
+        parsed = urlsplit(self.path)
+        if parsed.path == "/api/cyclone-guidance":
+            force = "refresh=1" in parsed.query.split("&")
+            payload = get_live_guidance(force=force)
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(200 if payload.get("status") != "error" else 503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8000"))
+    server = ThreadingHTTPServer(("127.0.0.1", port), AtmosScaleHandler)
+    print(f"AtmosScale AI is available at http://127.0.0.1:{port}")
+    print("AIFS track guidance loads from ECMWF Open Data when requested by the page.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    finally:
+        server.server_close()

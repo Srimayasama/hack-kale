@@ -30,6 +30,8 @@ const state = {
   map: null,
   stationLayers: new Map(),
   trackLayer: null,
+  aifsGuidance: null,
+  aifsLayer: null,
   busy: false,
 };
 
@@ -37,6 +39,8 @@ const $ = (selector) => document.querySelector(selector);
 const el = {
   fileNotice: $('#file-protocol-notice'), map: $('#odisha-map'),
   status: $('#data-status'), refresh: $('#refresh-button'), locationSelect: $('#location-select'),
+  aifsStatus: $('#aifs-status'), aifsContent: $('#aifs-guidance-content'), aifsRunLabel: $('#aifs-run-label'),
+  aifsRefresh: $('#aifs-refresh-button'), aifsTrackToggle: $('#aifs-track-toggle'),
   forecastTime: $('#forecast-time'), forecastIssue: $('#forecast-issue'), lastUpdated: $('#last-updated'),
   rain: $('#metric-rain'), gust: $('#metric-gust'), pressure: $('#metric-pressure'), probability: $('#metric-probability'),
   mapMetric: $('#map-metric'), mapLegend: $('#map-legend'), locationList: $('#location-list'),
@@ -50,6 +54,10 @@ const el = {
 function number(value, digits = 1) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
   return Number(value).toLocaleString('en-IN', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+}
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
 function locationData() {
@@ -290,6 +298,7 @@ function initializeMap() {
   if (location.protocol === 'file:') {
     el.map.innerHTML = '<div class="map-file-message"><span class="map-file-icon">↗</span><strong>Open the HTTP version to load this map</strong><p>OpenStreetMap tiles require a normal webpage address. Use <a href="http://127.0.0.1:8000">the local server preview</a>; instructions are shown above.</p></div>';
     el.trackToggle.disabled = true;
+    el.aifsTrackToggle.disabled = true;
     return;
   }
   if (state.map) return;
@@ -308,6 +317,128 @@ function initializeMap() {
     state.stationLayers.set(forecast.location.id, marker);
   });
   renderMapMarkers();
+  drawAifsTracks();
+}
+
+function formatLead(hours) {
+  if (!Number.isFinite(Number(hours))) return '—';
+  const value = Number(hours);
+  if (value < 24) return `+${value} h`;
+  const days = value / 24;
+  return `+${Number.isInteger(days) ? days : days.toFixed(1)} d`;
+}
+
+function renderAifsGuidance(payload) {
+  state.aifsGuidance = payload;
+  const status = payload.status === 'stale' ? 'stale' : payload.status === 'ok' ? 'ok' : 'error';
+  el.aifsStatus.className = `aifs-status ${status === 'ok' ? '' : status}`;
+  el.aifsStatus.querySelector('span').textContent = status === 'ok' ? 'LIVE AIFS GUIDANCE' : status === 'stale' ? 'CACHED AIFS GUIDANCE' : 'AIFS FEED UNAVAILABLE';
+
+  if (payload.modelRun) {
+    el.aifsRunLabel.textContent = `AIFS run: ${formatTime(payload.modelRun, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })} IST · forecast up to 15 days`;
+  }
+
+  const storms = Array.isArray(payload.storms) ? payload.storms : [];
+  const hasPaths = status !== 'error' && storms.some((storm) => Array.isArray(storm.bayTracks) && storm.bayTracks.length);
+  el.aifsTrackToggle.disabled = !hasPaths;
+  if (!hasPaths) el.aifsTrackToggle.checked = false;
+
+  if (status === 'error') {
+    el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>Live AI guidance could not load.</strong><p>${escapeHTML(payload.message || 'Start the local project server, check the internet connection, and refresh.')}</p></div>`;
+    drawAifsTracks();
+    return;
+  }
+
+  if (!storms.length) {
+    const staleNote = payload.refreshError ? `<p>Refresh issue: ${escapeHTML(payload.refreshError)}</p>` : '';
+    el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>No AIFS ensemble track candidate crosses the Bay of Bengal box in this model run.</strong><p>This describes one model run. It does not guarantee that no cyclone will form. Check IMD bulletins for official monitoring.</p>${staleNote}</div>`;
+    drawAifsTracks();
+    return;
+  }
+
+  const cards = storms.slice(0, 4).map((storm) => {
+    const id = escapeHTML(storm.stormId || 'Unlabelled');
+    const available = Number(storm.availableMemberTracks) || 0;
+    const bay = Number(storm.bayPathCount) || 0;
+    const north = Number(storm.northBayPathCount) || 0;
+    const odisha = Number(storm.odishaPathCount) || 0;
+    const leadRange = storm.bayLeadStart === null || storm.bayLeadStart === undefined
+      ? 'No valid lead range'
+      : `${formatLead(storm.bayLeadStart)} to ${formatLead(storm.bayLeadEnd)}`;
+    const modelAgreement = storm.singleModelAlsoForecasts
+      ? 'This model ID also appears in the AIFS single forecast.'
+      : payload.singleModelAvailable
+        ? 'Ensemble signal only: the AIFS single forecast does not show the same model ID in this run.'
+        : 'The AIFS single forecast comparison is unavailable for this run.';
+    return `<article class="aifs-system-card">
+      <div class="aifs-system-head"><div><span class="aifs-system-kicker">MODEL SYSTEM ID</span><strong class="aifs-system-id">${id}</strong></div><span class="aifs-model-badge">Not an official storm name</span></div>
+      <div class="aifs-stats">
+        <div class="aifs-stat"><strong>${bay}<small> / ${available}</small></strong><span>available member tracks cross the Bay box</span></div>
+        <div class="aifs-stat"><strong>${north}</strong><span>tracks reach the north Bay box</span></div>
+        <div class="aifs-stat"><strong>${odisha}</strong><span>tracks enter the Odisha watch box</span></div>
+      </div>
+      <p class="aifs-system-note">Bay track lead range: <strong>${escapeHTML(leadRange)}</strong>. ${escapeHTML(modelAgreement)}</p>
+    </article>`;
+  }).join('');
+  const staleNote = payload.refreshError ? `<p class="aifs-run-note">Showing the last successful run because refresh failed: ${escapeHTML(payload.refreshError)}</p>` : '';
+  const description = `<p class="aifs-run-note">AIFS member counts describe this model’s track spread; they are not calibrated probabilities. The Bay box is 4–25°N, 78–100°E; the Odisha watch box is 14–23°N, 80–90°E. Follow IMD and OSDMA for official warnings.</p>`;
+  el.aifsContent.innerHTML = `<div class="aifs-system-grid">${cards}</div>${description}${staleNote}`;
+  drawAifsTracks();
+}
+
+async function loadAifsGuidance(force = false) {
+  if (location.protocol === 'file:') {
+    renderAifsGuidance({ status: 'error', message: 'Open the dashboard using python3 server.py so it can reach the live AIFS service.' });
+    return;
+  }
+  el.aifsRefresh.disabled = true;
+  el.aifsStatus.className = 'aifs-status loading';
+  el.aifsStatus.querySelector('span').textContent = force ? 'REFRESHING AIFS' : 'LOADING AIFS';
+  el.aifsContent.innerHTML = '<div class="aifs-loading-row"><span class="loading-spinner" aria-hidden="true"></span><span>Fetching current ECMWF AIFS cyclone-track guidance…</span></div>';
+  try {
+    const response = await fetch(`/api/cyclone-guidance${force ? '?refresh=1' : ''}`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok && payload.status !== 'stale') throw new Error(payload.message || `HTTP ${response.status}`);
+    renderAifsGuidance(payload);
+  } catch (error) {
+    renderAifsGuidance({ status: 'error', message: `${error.message}. Start the local project server and try again.` });
+  } finally {
+    el.aifsRefresh.disabled = false;
+  }
+}
+
+function drawAifsTracks() {
+  if (state.map && state.aifsLayer) state.map.removeLayer(state.aifsLayer);
+  state.aifsLayer = null;
+  if (!state.map || !el.aifsTrackToggle.checked || !state.aifsGuidance?.storms?.length) return;
+
+  const layer = L.layerGroup();
+  const boundsPoints = [];
+  state.aifsGuidance.storms.slice(0, 4).forEach((storm, stormIndex) => {
+    (storm.bayTracks || []).forEach((track) => {
+      const coordinates = track.points.map((point) => [point.lat, point.lon]);
+      if (coordinates.length < 2) return;
+      boundsPoints.push(...coordinates);
+      L.polyline(coordinates, {
+        color: stormIndex === 0 ? '#3f809d' : '#7e9eaa',
+        weight: 1.5,
+        opacity: .25,
+      }).bindTooltip(`${storm.stormId} · AIFS ensemble member ${track.member}`).addTo(layer);
+    });
+    const centre = storm.medianPath || [];
+    if (centre.length >= 2) {
+      const coordinates = centre.map((point) => [point.lat, point.lon]);
+      L.polyline(coordinates, { color: '#0b8e88', weight: 3, opacity: .95 })
+        .bindTooltip(`${storm.stormId} · AIFS ensemble median path (not an official forecast)`).addTo(layer);
+      const endpoint = centre.at(-1);
+      L.circleMarker([endpoint.lat, endpoint.lon], { radius: 5, color: '#fff', weight: 2, fillColor: '#0b8e88', fillOpacity: 1 })
+        .bindTooltip(`${storm.stormId} · ${formatLead(endpoint.leadHours)} from model run`).addTo(layer);
+    }
+  });
+  if (!boundsPoints.length) return;
+  layer.addTo(state.map);
+  state.aifsLayer = layer;
+  state.map.fitBounds(L.latLngBounds(boundsPoints).pad(.06), { maxZoom: 7 });
 }
 
 function renderRiverChart() {
@@ -454,10 +585,13 @@ function connectControls() {
     if (!el.trackToggle.checked) el.trackToggle.checked=true;
     renderStormDetails();
   });
+  el.aifsRefresh.addEventListener('click',()=>loadAifsGuidance(true));
+  el.aifsTrackToggle.addEventListener('change',drawAifsTracks);
 }
 
 populateLocations();
 connectControls();
 if (location.protocol === 'file:') el.fileNotice.hidden = false;
 loadStormArchive();
+loadAifsGuidance();
 refreshData().then(()=>initializeMap());
