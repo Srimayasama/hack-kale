@@ -34,6 +34,7 @@ const state = {
   aifsLayer: null,
   selectedAifsStormId: '',
   aifsMapTouched: false,
+  trainedForecast: null,
   busy: false,
 };
 
@@ -45,6 +46,9 @@ const el = {
   aifsRefresh: $('#aifs-refresh-button'), aifsTrackToggle: $('#aifs-track-toggle'),
   aifsStageOutlook: $('#aifs-stage-outlook'), aifsScenario: $('#aifs-scenario-select'), aifsStageGrid: $('#aifs-stage-grid'),
   aifsStageVisual: $('#aifs-stage-visual'), aifsDownloadImage: $('#aifs-download-image'),
+  trainedMlOutlook: $('#trained-ml-outlook'), trainedMlStatus: $('#trained-ml-status'),
+  trainedMlSummary: $('#trained-ml-summary'), trainedMlStageGrid: $('#trained-ml-stage-grid'),
+  trainedMlCaveat: $('#trained-ml-caveat'),
   forecastTime: $('#forecast-time'), forecastIssue: $('#forecast-issue'), lastUpdated: $('#last-updated'),
   rain: $('#metric-rain'), gust: $('#metric-gust'), pressure: $('#metric-pressure'), probability: $('#metric-probability'),
   mapMetric: $('#map-metric'), mapLegend: $('#map-legend'), locationList: $('#location-list'),
@@ -349,6 +353,7 @@ function renderAifsStageGraphic(storm) {
     ? formatTime(state.aifsGuidance.modelRun, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
     : 'Latest available run';
   const stages = storm.forecastStages || [];
+  const trainedStages = state.trainedForecast?.stages || [];
   const coast = [[84.5,17.4],[84.7,18.2],[85.0,18.8],[85.3,19.3],[85.8,19.8],[86.2,20.3],[86.6,20.8],[87.0,21.2],[87.5,21.8],[88.0,22.4],[88.5,23.1],[89.0,23.9],[89.4,24.8],[89.7,25.6]];
   const coastLine = coast.map(([lon,lat], index) => `${index ? 'L' : 'M'}${project(lon,lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ');
   const landPath = `${coastLine} L${project(100,25.6).join(',')} L${project(100,17.4).join(',')} Z`;
@@ -374,6 +379,17 @@ function renderAifsStageGraphic(storm) {
   const medianMarkup = medianPoints.length > 1
     ? `<path d="${medianPoints.map((point,index)=>`${index?'L':'M'}${project(point.lon,point.lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ')}" fill="none" stroke="#0b8e88" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`
     : '';
+  const trainedMapPoints = trainedStages.filter((point) => point.lon >= map.west && point.lon <= map.east && point.lat >= map.south && point.lat <= map.north);
+  const trainedPathMarkup = trainedMapPoints.length > 1
+    ? `<path d="${trainedMapPoints.map((point,index)=>`${index?'L':'M'}${project(point.lon,point.lat).map((value)=>value.toFixed(1)).join(',')}`).join(' ')}" fill="none" stroke="#7355b5" stroke-width="4" stroke-dasharray="9 7" stroke-linecap="round" stroke-linejoin="round"/>`
+    : '';
+  const trainedRadiusMarkup = trainedMapPoints.map((stage,index) => {
+    const radius = Number(stage.r34RadiusKm);
+    if (!Number.isFinite(radius) || radius <= 0) return '';
+    const [x,y] = project(stage.lon,stage.lat);
+    const pixels = radius * map.height / ((map.north - map.south) * 111);
+    return `<g><circle cx="${x}" cy="${y}" r="${pixels.toFixed(1)}" fill="#9c83d0" fill-opacity=".08" stroke="#7355b5" stroke-opacity=".72" stroke-width="1.5" stroke-dasharray="5 4"><title>Experimental 34-kt wind-radius estimate · not an impact boundary</title></circle><rect x="${x - 10}" y="${y - 10}" width="20" height="20" rx="5" fill="#7355b5" stroke="#fff" stroke-width="3"/><text x="${x}" y="${y + 4}" text-anchor="middle" class="ml-stage-index">M${index + 1}</text></g>`;
+  }).join('');
   const stageMarkup = stages.map((stage,index) => {
     if (stage.lat === undefined || stage.lon === undefined) return '';
     const [x,y] = project(stage.lon,stage.lat);
@@ -403,14 +419,14 @@ function renderAifsStageGraphic(storm) {
       <text x="920" y="${y + 97}" class="row-near">${nearText}</text>
     </g>`;
   }).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Four-stage ECMWF AIFS cyclone track outlook for Odisha">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="ECMWF AIFS and AtmosScale trained cyclone track outlook for Odisha">
     <style>
-      text{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.title{font-size:27px;font-weight:850;fill:#182a41;letter-spacing:-.7px}.subtitle{font-size:12px;font-weight:650;fill:#718291}.eyebrow{font-size:10px;font-weight:850;letter-spacing:1.7px;fill:#0b8e88}.axis{font-size:10px;font-weight:750;fill:#647885}.maplabel{font-size:12px;font-weight:850;letter-spacing:1.2px;fill:#6d9095;opacity:.86}.paneltitle{font-size:13px;font-weight:850;letter-spacing:1.1px;fill:#182a41}.row-index{font-size:12px;font-weight:900;fill:#0b8e88}.row-title{font-size:14px;font-weight:850;fill:#182a41}.row-date{font-size:10px;font-weight:650;fill:#8895a0}.row-center{font-size:12px;font-weight:800;fill:#30495d}.row-class{font-size:10px;font-weight:850;fill:#237c75}.row-meta{font-size:10px;font-weight:700;fill:#687c89}.row-near{font-size:9px;font-weight:750;fill:#9a6f26}.legend{font-size:10px;font-weight:700;fill:#526b77}.foot{font-size:9px;font-weight:650;fill:#82919a}.stage-index{font-size:12px;font-weight:900;fill:#fff}
+      text{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.title{font-size:27px;font-weight:850;fill:#182a41;letter-spacing:-.7px}.subtitle{font-size:12px;font-weight:650;fill:#718291}.eyebrow{font-size:10px;font-weight:850;letter-spacing:1.7px;fill:#0b8e88}.axis{font-size:10px;font-weight:750;fill:#647885}.maplabel{font-size:12px;font-weight:850;letter-spacing:1.2px;fill:#6d9095;opacity:.86}.paneltitle{font-size:13px;font-weight:850;letter-spacing:1.1px;fill:#182a41}.row-index{font-size:12px;font-weight:900;fill:#0b8e88}.row-title{font-size:14px;font-weight:850;fill:#182a41}.row-date{font-size:10px;font-weight:650;fill:#8895a0}.row-center{font-size:12px;font-weight:800;fill:#30495d}.row-class{font-size:10px;font-weight:850;fill:#237c75}.row-meta{font-size:10px;font-weight:700;fill:#687c89}.row-near{font-size:9px;font-weight:750;fill:#9a6f26}.legend{font-size:10px;font-weight:700;fill:#526b77}.foot{font-size:9px;font-weight:650;fill:#82919a}.stage-index{font-size:12px;font-weight:900;fill:#fff}.ml-stage-index{font-size:8px;font-weight:900;fill:#fff}
     </style>
     <rect width="100%" height="100%" rx="18" fill="#f7fafb"/>
     <text x="48" y="43" class="eyebrow">ATMOSCALE AI · ODISHA CYCLONE LAB</text>
     <text x="48" y="78" class="title">Four-stage cyclone track outlook</text>
-    <text x="48" y="101" class="subtitle">ECMWF AIFS ensemble · model system ${escapeHTML(storm.stormId)} · run ${escapeHTML(runLabel)} IST</text>
+    <text x="48" y="101" class="subtitle">ECMWF AIFS ensemble + AtmosScale trained track model · ${escapeHTML(storm.stormId)} · run ${escapeHTML(runLabel)} IST</text>
     <rect x="50" y="115" width="790" height="550" rx="14" fill="#e9f5f6" stroke="#d5e5e7"/>
     <rect x="${map.x}" y="${map.y}" width="${map.width}" height="${map.height}" rx="4" fill="#dceff2"/>
     ${gridMarkup}
@@ -418,10 +434,11 @@ function renderAifsStageGraphic(storm) {
     <path d="${coastLine}" fill="none" stroke="#91a998" stroke-width="2.5"/>
     <text x="${project(92,23.3)[0]}" y="${project(92,23.3)[1]}" class="maplabel">INDIA · SCHEMATIC COAST</text>
     <text x="${project(91.4,14)[0]}" y="${project(91.4,14)[1]}" class="maplabel">BAY OF BENGAL</text>
-    ${memberMarkup}${medianMarkup}${points}${stageMarkup}
+    ${memberMarkup}${medianMarkup}${trainedPathMarkup}${trainedRadiusMarkup}${points}${stageMarkup}
     <circle cx="98" cy="649" r="5" fill="#0b8e88"/><text x="111" y="653" class="legend">Coastal reference point</text>
     <circle cx="250" cy="649" r="5" fill="#d59b38"/><text x="263" y="653" class="legend">Near a member track at a forecast stage</text>
     <line x1="500" y1="649" x2="526" y2="649" stroke="#0b8e88" stroke-width="3"/><text x="534" y="653" class="legend">Ensemble median path</text>
+    <line x1="674" y1="649" x2="700" y2="649" stroke="#7355b5" stroke-width="3" stroke-dasharray="7 5"/><text x="708" y="653" class="legend">AtmosScale ML + size estimate</text>
     <rect x="850" y="115" width="550" height="550" rx="14" fill="#eef4f5" stroke="#dfe8e9"/>
     <text x="874" y="145" class="paneltitle">FORECAST CENTRE · INTENSITY · COASTAL PROXIMITY</text>
     ${stageRows}
@@ -531,6 +548,7 @@ function renderAifsGuidance(payload) {
   if (status === 'error') {
     el.aifsStageOutlook.hidden = true;
     el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>Live AI guidance could not load.</strong><p>${escapeHTML(payload.message || 'Start the local project server, check the internet connection, and refresh.')}</p></div>`;
+    renderTrainedForecast({ status: 'unavailable', message: 'The live AIFS track needed to seed the trained model is unavailable.' });
     drawAifsTracks();
     return;
   }
@@ -539,6 +557,7 @@ function renderAifsGuidance(payload) {
     el.aifsStageOutlook.hidden = true;
     const staleNote = payload.refreshError ? `<p>Refresh issue: ${escapeHTML(payload.refreshError)}</p>` : '';
     el.aifsContent.innerHTML = `<div class="aifs-empty-state"><strong>No AIFS ensemble track candidate crosses the Bay of Bengal box in this model run.</strong><p>This describes one model run. It does not guarantee that no cyclone will form. Check IMD bulletins for official monitoring.</p>${staleNote}</div>`;
+    renderTrainedForecast({ status: 'unavailable', message: 'No live Bay of Bengal model system is available to seed the trained forecast.' });
     drawAifsTracks();
     return;
   }
@@ -575,6 +594,72 @@ function renderAifsGuidance(payload) {
   el.aifsScenario.innerHTML = selectable.map((storm) => `<option value="${escapeHTML(storm.stormId)}">${escapeHTML(storm.stormId)} · ${storm.bayPathCount}/${storm.availableMemberTracks} Bay paths</option>`).join('');
   renderAifsStages();
   drawAifsTracks();
+  loadTrainedForecast();
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const rad = (value) => value * Math.PI / 180;
+  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+function renderTrainedForecast(payload) {
+  state.trainedForecast = payload?.status === 'ok' ? payload : null;
+  el.trainedMlOutlook.hidden = false;
+  const ok = payload?.status === 'ok';
+  el.trainedMlStatus.className = `trained-ml-status${ok ? ' ready' : payload?.status === 'loading' ? ' loading' : ' unavailable'}`;
+  el.trainedMlStatus.textContent = ok ? 'TRAINED MODEL READY' : payload?.status === 'loading' ? 'RUNNING MODEL' : 'MODEL UNAVAILABLE';
+  if (!ok) {
+    el.trainedMlSummary.textContent = payload?.message || 'The trained forecast is not available for this system.';
+    el.trainedMlStageGrid.innerHTML = '';
+    el.trainedMlCaveat.textContent = 'The model needs its saved training artifact and enough live AIFS context. Follow the training steps in the README, then refresh. Follow IMD and OSDMA for official warnings.';
+    const storm = state.aifsGuidance?.storms?.find((item) => item.stormId === state.selectedAifsStormId);
+    if (storm) renderAifsStageGraphic(storm);
+    drawAifsTracks();
+    return;
+  }
+
+  el.trainedMlSummary.textContent = `${number(payload.trainingStormCount, 0)} training storms · ${number(payload.holdoutStormCount, 0)} separate holdout storms from ${payload.holdoutStartYear || 'later seasons'} onward. AIFS supplies the first ${number(payload.anchorLeadHours, 24)} hours of context.`;
+  el.trainedMlCaveat.textContent = 'Experimental historical-track model for a system already listed by AIFS; it does not predict cyclone formation. Its 34-kt wind-radius estimate is a circular approximation from sparse USA/JTWC labels, not a damage boundary. The live seed uses forecast positions and 10 m winds, which differ from historical observations and sustained-wind labels. These results are not calibrated probabilities or official warnings; follow IMD and OSDMA.';
+  el.trainedMlStageGrid.innerHTML = (payload.stages || []).map((stage, index) => {
+    const near = Number.isFinite(Number(stage.r34RadiusKm))
+      ? locations.filter((place) => haversineKm(stage.lat, stage.lon, place.lat, place.lon) <= Number(stage.r34RadiusKm)).map((place) => place.district)
+      : [];
+    const exposure = stage.r34RadiusKm === null || stage.r34RadiusKm === undefined
+      ? 'No training radius available'
+      : near.length ? `Reference points inside estimate: ${near.join(', ')}` : 'No coastal reference point inside this radius';
+    const errorNote = stage.centerHoldoutMeanErrorKm === null || stage.centerHoldoutMeanErrorKm === undefined
+      ? 'Holdout error unavailable'
+      : `Holdout centre error ${number(stage.centerHoldoutMeanErrorKm, 0)} km · linear-motion baseline ${number(stage.linearMotionBaselineMeanErrorKm, 0)} km`;
+    return `<article class="trained-ml-card">
+      <div class="aifs-stage-top"><span class="aifs-stage-number">0${index + 1}</span><span class="aifs-stage-lead">${escapeHTML(formatLead(stage.leadHours))}</span></div>
+      <p class="aifs-stage-date">${escapeHTML(formatTime(stage.validAt, { weekday: 'short', day: 'numeric', month: 'short' }))}</p>
+      <div class="aifs-stage-center"><span>MODELLED CYCLONE CENTRE</span><strong>${escapeHTML(formatCoordinate(stage.lat, 'N', 'S'))} · ${escapeHTML(formatCoordinate(stage.lon, 'E', 'W'))}</strong></div>
+      <div class="trained-ml-class"><span>WIND-BASED CLASS ESTIMATE</span><strong>${escapeHTML(stage.windBand || 'Unavailable')}</strong></div>
+      <div class="aifs-stage-metrics"><span>Wind <b>${number(stage.windKmh, 0)} km/h</b></span><span>Central pressure <b>${number(stage.pressureHpa, 0)} hPa</b></span><span>34-kt radius <b>${number(stage.r34RadiusKm, 0)} km</b></span></div>
+      <p class="trained-ml-exposure">${escapeHTML(exposure)}</p><p class="trained-ml-error">${escapeHTML(errorNote)}${stage.r34HoldoutMaeKm == null ? '' : ` · radius MAE ${number(stage.r34HoldoutMaeKm, 0)} km`}</p>
+    </article>`;
+  }).join('') || '<p class="aifs-empty-state">The trained model did not return any forecast stages.</p>';
+  const storm = state.aifsGuidance?.storms?.find((item) => item.stormId === state.selectedAifsStormId);
+  if (storm) renderAifsStageGraphic(storm);
+  drawAifsTracks();
+}
+
+async function loadTrainedForecast() {
+  const stormId = state.selectedAifsStormId;
+  if (!stormId || location.protocol === 'file:') return;
+  renderTrainedForecast({ status: 'loading', message: 'Running the trained model with this system’s early AIFS track.' });
+  try {
+    const response = await fetch(`/api/trained-forecast?stormId=${encodeURIComponent(stormId)}`, { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok && payload.status !== 'unavailable') throw new Error(payload.message || `HTTP ${response.status}`);
+    if (stormId !== state.selectedAifsStormId) return;
+    renderTrainedForecast(payload);
+  } catch (error) {
+    if (stormId !== state.selectedAifsStormId) return;
+    renderTrainedForecast({ status: 'unavailable', message: error.message });
+  }
 }
 
 async function loadAifsGuidance(force = false) {
@@ -620,6 +705,21 @@ function drawAifsTracks() {
     boundsPoints.push(...coordinates);
     L.polyline(coordinates, { color: '#0b8e88', weight: 3, opacity: .95 })
       .bindTooltip(`${storm.stormId} · AIFS ensemble median path (not an official forecast)`).addTo(layer);
+  }
+  const trainedStages = state.trainedForecast?.stages || [];
+  if (trainedStages.length >= 2) {
+    const coordinates = trainedStages.map((stage) => [stage.lat, stage.lon]);
+    boundsPoints.push(...coordinates);
+    L.polyline(coordinates, { color: '#7355b5', weight: 4, opacity: .9, dashArray: '8 7' })
+      .bindTooltip('AtmosScale trained ML path · research estimate').addTo(layer);
+    trainedStages.forEach((stage) => {
+      if (!Number.isFinite(Number(stage.r34RadiusKm)) || Number(stage.r34RadiusKm) <= 0) return;
+      L.circle([stage.lat, stage.lon], {
+        radius: Number(stage.r34RadiusKm) * 1000,
+        color: '#7355b5', weight: 1.5, opacity: .75,
+        fillColor: '#9c83d0', fillOpacity: .08, dashArray: '5 5',
+      }).bindTooltip(`Experimental 34-kt wind-radius estimate · +${stage.leadHours} h · not an impact boundary`).addTo(layer);
+    });
   }
   (storm.forecastStages || []).forEach((stage, index) => {
     if (!Number.isFinite(Number(stage.lat)) || !Number.isFinite(Number(stage.lon))) return;
@@ -789,6 +889,7 @@ function connectControls() {
     state.selectedAifsStormId=event.target.value;
     renderAifsStages();
     drawAifsTracks();
+    loadTrainedForecast();
   });
 }
 

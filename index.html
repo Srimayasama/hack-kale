@@ -73,6 +73,14 @@
             <div id="aifs-stage-visual" class="aifs-stage-visual" role="img" aria-label="Generated four-stage cyclone path and coastal proximity graphic"></div>
             <div id="aifs-stage-grid" class="aifs-stage-grid" aria-live="polite"></div>
             <p class="aifs-stage-caveat">Track proximity is a screening view: a listed location is within 150 km of at least one ensemble track at that lead. It is not an affected-area boundary, landfall forecast, or probability. Wind bands are indicative comparisons against IMD thresholds using ECMWF model maximum 10 m wind, not official IMD cyclone classifications. A model system ID is not a cyclone name, and the same ID is not guaranteed to be the same physical storm across ensemble members. Follow IMD and OSDMA warnings.</p>
+            <section id="trained-ml-outlook" class="trained-ml-outlook" hidden aria-labelledby="trained-ml-title">
+              <div class="trained-ml-heading">
+                <div><p class="eyebrow">ATMOSSCALE MODEL · TRAINED ON HISTORICAL CYCLONES</p><h3 id="trained-ml-title">Our model’s next four stages</h3><p id="trained-ml-summary" class="section-copy">Loading the saved historical model…</p></div>
+                <span id="trained-ml-status" class="trained-ml-status">LOADING</span>
+              </div>
+              <div id="trained-ml-stage-grid" class="trained-ml-stage-grid" aria-live="polite"></div>
+              <p id="trained-ml-caveat" class="trained-ml-caveat">This research model is seeded by the first 24 hours of the current ECMWF AIFS ensemble track. It predicts beyond that point from historical cyclone motion. It is experimental and is not an official warning.</p>
+            </section>
           </section>
           <div class="aifs-footer">
             <span id="aifs-run-label">Model run: waiting for ECMWF</span>
@@ -97,7 +105,7 @@
               <div><p class="eyebrow">LIVE POINT FORECASTS + HISTORICAL TRACKS</p><h2>Odisha coast, in context</h2></div>
               <div class="map-layer-controls">
                 <label class="map-layer-control"><input id="track-toggle" type="checkbox"><span class="switch"></span><span>Historical track</span></label>
-                <label class="map-layer-control"><input id="aifs-track-toggle" type="checkbox" disabled><span class="switch"></span><span>Live AIFS path + stages</span></label>
+                <label class="map-layer-control"><input id="aifs-track-toggle" type="checkbox" disabled><span class="switch"></span><span>AIFS + trained ML path</span></label>
               </div>
             </div>
             <div class="map-toolbar">
@@ -106,7 +114,7 @@
               <span id="map-legend" class="map-legend"><i></i><span>Forecast value</span></span>
             </div>
             <div id="odisha-map" role="application" aria-label="Map of coastal Odisha with five forecast locations and an optional historical cyclone track"></div>
-            <div class="map-foot"><span><i class="map-dot dot-live"></i> Model forecast point</span><span><i class="map-dot dot-track"></i> Archived track point</span><span class="map-disclaimer">Point forecasts represent nearby model grid cells, not full districts.</span></div>
+            <div class="map-foot"><span><i class="map-dot dot-live"></i> Model forecast point</span><span><i class="map-dot dot-track"></i> Archived track point</span><span class="map-disclaimer">Purple dashed line/circles show experimental trained path and wind-radius estimates; they are not impact boundaries.</span></div>
           </article>
 
           <aside class="panel locations-panel">
@@ -151,50 +159,50 @@
         <section class="panel ai-workbench" id="cyclone-ai">
           <div class="ai-workbench-heading">
             <div>
-              <p class="eyebrow">SATELLITE AI/ML · PROJECT WORKFLOW</p>
-              <h2>From cloud pattern to cyclone outlook</h2>
-              <p class="section-copy">The dashboard now displays staged ECMWF AI track, centre, pressure and wind guidance. Its Odisha-specific satellite image detection and cloud-pattern classifier still need to be built and trained.</p>
+              <p class="eyebrow">ATMOSSCALE AI/ML · TRAINED CYCLONE MODEL</p>
+              <h2>Historical cyclone data in. Four-stage forecast out.</h2>
+              <p class="section-copy">AtmosScale now trains its own Bay of Bengal model from historical cyclone tracks. It forecasts centre movement, wind and pressure, estimates a 34-kt wind radius when data allow, then compares that footprint with Odisha coastal reference points.</p>
             </div>
-            <span class="model-status"><i></i> SATELLITE MODEL · NEXT STAGE</span>
+            <span class="model-status"><i></i> TRACK MODEL · TRAINED</span>
           </div>
 
           <div class="ai-stage-grid">
             <article class="ai-stage">
               <span class="ai-stage-number">01</span>
-              <div><span class="ai-stage-label">OBSERVE</span><h3>Satellite image sequence</h3></div>
-              <p>Use INSAT-3D/3DR infrared and water-vapour channels to follow cloud-top temperature and storm structure over time.</p>
-              <a href="https://mausam.imd.gov.in/imd_latest/contents/satmet.php" target="_blank" rel="noreferrer">IMD satellite products ↗</a>
+              <div><span class="ai-stage-label">TRAIN</span><h3>Learn from past storms</h3></div>
+              <p>Use NOAA IBTrACS Bay of Bengal tracks from 1980–2024. Each training example contains past centre positions, wind and pressure.</p>
+              <small>Later cyclone seasons are kept out for a separate holdout score</small>
             </article>
             <article class="ai-stage">
               <span class="ai-stage-number">02</span>
-              <div><span class="ai-stage-label">IDENTIFY</span><h3>Find the storm centre</h3></div>
-              <p>A vision model can locate an organized rotating cloud system and estimate its centre with a confidence score.</p>
-              <small>Planned: image detection and centre localization</small>
+              <div><span class="ai-stage-label">PREDICT</span><h3>Follow its future path</h3></div>
+              <p>Extra Trees regression predicts centre movement at four lead times. The live AIFS track supplies the first 24 hours of motion context.</p>
+              <small>Live view: AtmosScale prediction is drawn beside AIFS guidance</small>
             </article>
             <article class="ai-stage">
               <span class="ai-stage-number">03</span>
-              <div><span class="ai-stage-label">CLASSIFY</span><h3>Describe its pattern</h3></div>
-              <p>Candidate labels: organizing, symmetric or eye-like, sheared or asymmetric, and weakening. These need expert-reviewed training labels.</p>
-              <small>Pattern tags are not official storm categories</small>
+              <div><span class="ai-stage-label">ESTIMATE</span><h3>Wind and pressure</h3></div>
+              <p>Separate regressors estimate future sustained wind and central pressure. The wind-based storm band is derived from the wind estimate.</p>
+              <small>Historical wind sources can use different averaging periods</small>
             </article>
             <article class="ai-stage">
               <span class="ai-stage-number">04</span>
-              <div><span class="ai-stage-label">PREDICT</span><h3>Estimate the next change</h3></div>
-              <p>Live baseline: ECMWF AIFS ensemble track guidance, with indicative wind bands and coastal track proximity. The next model step is combining local satellite patterns with environmental data for Odisha.</p>
-              <small>Current AIFS horizon: up to 15 days</small>
+              <div><span class="ai-stage-label">MAP SIZE</span><h3>Show a wind-radius estimate</h3></div>
+              <p>Where enough best-track labels exist, the model estimates the radius of 34-kt winds and draws a circle around the forecast centre.</p>
+              <small>Reference locations are screening points, not confirmed impact zones</small>
             </article>
           </div>
 
           <div class="ai-data-strip">
             <div class="ai-data-block">
-              <span class="ai-data-label">HISTORICAL SATELLITE TRAINING DATA</span>
-              <p><strong>NOAA HURSAT-B1</strong> offers storm-centred infrared imagery at 3-hourly, about 8 km resolution through 2015. It is a historical training source, not a live feed.</p>
-              <a href="https://www.ncei.noaa.gov/products/hurricane-satellite-data" target="_blank" rel="noreferrer">Explore NOAA HURSAT ↗</a>
+              <span class="ai-data-label">MODEL TRAINING SOURCE</span>
+              <p><strong>NOAA NCEI IBTrACS</strong> supplies North Indian Ocean best-track records. Run <code>python ml/train.py</code> to download the source data and retrain the model.</p>
+              <a href="https://www.ncei.noaa.gov/products/international-best-track-archive" target="_blank" rel="noreferrer">Open NOAA IBTrACS ↗</a>
             </div>
             <div class="ai-data-block ai-readiness">
               <span class="ai-data-label">WHAT WORKS IN THIS PROTOTYPE</span>
-              <div class="readiness-chips"><span class="ready-chip">AIFS live guidance connected</span><span class="ready-chip">Weather APIs connected</span><span class="ready-chip">IBTrACS replay connected</span><span class="planned-chip">Satellite pixels not ingested</span><span class="planned-chip">Odisha classifier not trained</span></div>
-              <p>For Odisha use, the next step is to pair accessible INSAT imagery with reviewed storm labels, then evaluate on storms kept out of training. Follow IMD/OSDMA for real warnings.</p>
+              <div class="readiness-chips"><span class="ready-chip">Historical ML model trained</span><span class="ready-chip">Live AIFS context connected</span><span class="ready-chip">Four future track stages</span><span class="ready-chip">Wind and pressure estimates</span><span class="ready-chip">Experimental 34-kt radius</span><span class="planned-chip">Satellite image model not trained</span></div>
+              <p>This first model uses cyclone history only. Adding satellite imagery and atmospheric fields is a future model improvement. Follow IMD and OSDMA for official warnings.</p>
             </div>
           </div>
         </section>
